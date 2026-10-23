@@ -68,7 +68,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
   if (LOGIN_PATH.test(path)) {
     return finishJob(job.id, { kind: 'stop', error: 'Logged out of Canva' });
   }
-  const afterUse = job.step === 'use-template';
+  const afterUse = job.step === 'use-template' || /^\/design/.test(path);
   await update((x) => {
     const j = x.queue.find((y) => y.id === job.id);
     if (j && j.state === 'opening') {

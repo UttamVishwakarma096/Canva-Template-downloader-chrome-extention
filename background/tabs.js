@@ -10,7 +10,7 @@ async function workerWindow() {
   if (workerWindowId != null) {
     try {
       const win = await chrome.windows.get(workerWindowId);
-      if (win && win.state !== 'minimized') return win.id;
+      if (win) return win.id;
     } catch {
       // window was closed
     }
@@ -22,7 +22,17 @@ export async function openJobTab(job) {
   let tab;
   const windowId = await workerWindow();
   if (windowId != null) {
-    tab = await chrome.tabs.create({ windowId, url: job.url, active: true });
+    // Reuse existing tab in the worker window to prevent tab churn, popups, and virtual desktop switching
+    const tabs = await chrome.tabs.query({ windowId });
+    if (tabs && tabs.length > 0) {
+      tab = tabs[0];
+      await chrome.tabs.update(tab.id, { url: job.url, active: true });
+      for (let i = 1; i < tabs.length; i++) {
+        await chrome.tabs.remove(tabs[i].id).catch(() => {});
+      }
+    } else {
+      tab = await chrome.tabs.create({ windowId, url: job.url, active: true });
+    }
   } else {
     const win = await chrome.windows.create({ url: job.url, focused: false, width: 1280, height: 900, type: 'normal' });
     await chrome.storage.local.set({ workerWindowId: win.id });
@@ -32,7 +42,7 @@ export async function openJobTab(job) {
     const j = d.queue.find((x) => x.id === job.id);
     if (j) {
       j.tabId = tab.id;
-      j.templateTabId = tab.id; // Remember the initial template tab ID
+      j.templateTabId = tab.id;
       j.updatedAt = Date.now();
     }
   });
@@ -41,6 +51,51 @@ export async function openJobTab(job) {
 // The runner is not in the manifest: it only goes into tabs the extension opened.
 // afterUse: "Use this template" was already clicked; only the editor steps are left.
 export async function injectRunner(tabId, jobId, afterUse) {
+  // 1. Install interceptor in the page's MAIN execution world to disable focus-stealing
+  // and force window.open to navigate in the current tab instead of opening popups/tabs
+  // that cause Windows to switch virtual desktops.
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: () => {
+        if (window.__canvaBulkInterceptorInstalled) return;
+        window.__canvaBulkInterceptorInstalled = true;
+
+        // Disarm focus stealing: prevent Canva or window.open from switching Windows virtual desktops
+        window.focus = function () {};
+
+        // Redirect window.open to in-place navigation
+        const origOpen = window.open;
+        window.open = function (url, target, features) {
+          if (url && typeof url === 'string') {
+            window.location.href = url;
+            return window;
+          }
+          const proxy = {
+            set location(val) {
+              if (typeof val === 'string') {
+                window.location.href = val;
+              } else if (val && val.href) {
+                window.location.href = val.href;
+              }
+            },
+            get location() {
+              return window.location;
+            },
+            focus() {},
+            blur() {},
+            close() {},
+            closed: false,
+            document: window.document,
+          };
+          return proxy;
+        };
+      },
+    });
+  } catch (_) {}
+
+  // 2. Inject selectors and runner in the isolated world
   await chrome.scripting.executeScript({
     target: { tabId },
     files: ['content/selectors.js', 'content/runner.js'],
@@ -51,12 +106,15 @@ export async function injectRunner(tabId, jobId, afterUse) {
 export async function closeTab(tabId) {
   if (tabId == null) return;
   try {
-    // Keep the worker window open: leave an empty tab behind if this is the last one.
     const tab = await chrome.tabs.get(tabId);
     const { workerWindowId } = await chrome.storage.local.get('workerWindowId');
     if (tab.windowId === workerWindowId) {
       const tabs = await chrome.tabs.query({ windowId: tab.windowId });
-      if (tabs.length === 1) await chrome.tabs.create({ windowId: tab.windowId, url: 'about:blank', active: true });
+      // Keep worker window open by navigating to about:blank if it's the last tab
+      if (tabs.length === 1) {
+        await chrome.tabs.update(tabId, { url: 'about:blank' });
+        return;
+      }
     }
     await chrome.tabs.remove(tabId);
   } catch {
@@ -64,22 +122,25 @@ export async function closeTab(tabId) {
   }
 }
 
-// Closes both the template tab and editor tab when a template job finishes.
+// Closes any secondary tabs and resets worker window tab to about:blank when a template job finishes.
 export async function closeJobTabs(job) {
-  if (!job) return;
   const ids = new Set();
-  if (job.tabId) ids.add(job.tabId);
-  if (job.templateTabId) ids.add(job.templateTabId);
+  if (job?.tabId) ids.add(job.tabId);
+  if (job?.templateTabId) ids.add(job.templateTabId);
 
-  // Also check worker window for any leftover Canva tabs from this job
   try {
     const { workerWindowId } = await chrome.storage.local.get('workerWindowId');
     if (workerWindowId != null) {
       const tabs = await chrome.tabs.query({ windowId: workerWindowId });
-      for (const t of tabs) {
-        if (t.url && (t.url.includes('/templates/') || t.url.includes('/design/'))) {
-          ids.add(t.id);
+      if (tabs && tabs.length > 0) {
+        // Reset primary worker tab to about:blank to immediately release Canva RAM
+        await chrome.tabs.update(tabs[0].id, { url: 'about:blank' });
+        // Close any other tabs that might have opened
+        for (let i = 1; i < tabs.length; i++) {
+          ids.add(tabs[i].id);
         }
+        // Don't close the primary worker tab
+        ids.delete(tabs[0].id);
       }
     }
   } catch (_) {}
