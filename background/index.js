@@ -87,26 +87,34 @@ chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
 // "Use this template" may open the editor in a new tab: follow it.
 chrome.tabs.onCreated.addListener(async (tab) => {
   const { workerWindowId } = await chrome.storage.local.get('workerWindowId');
+  let oldTemplateTab = null;
   await update((d) => {
     const job = activeJob(d);
     if (!job || job.state !== 'clicking') return;
     const isOpener = tab.openerTabId != null && tab.openerTabId === job.tabId;
     const isWorkerNewTab = workerWindowId != null && tab.windowId === workerWindowId && job.step === 'use-template';
     if (isOpener || isWorkerNewTab) {
+      if (!job.templateTabId) job.templateTabId = job.tabId;
+      oldTemplateTab = job.templateTabId;
       job.tabId = tab.id;
       job.updatedAt = Date.now();
     }
   });
+  if (oldTemplateTab != null && oldTemplateTab !== tab.id) {
+    setTimeout(() => closeTab(oldTemplateTab), 1500);
+  }
 });
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   const d = await read();
   const job = activeJob(d);
-  if (job && job.tabId === tabId && ['opening', 'clicking'].includes(job.state)) {
-    // When transitioning from template page to editor, the old template tab often closes
-    // while the new editor tab is opening. Do not abort the job in this transition.
+  if (job && ['opening', 'clicking'].includes(job.state)) {
+    // Closing the template preview tab is expected and desired to save RAM.
+    if (job.templateTabId === tabId) return;
     if (job.step === 'use-template') return;
-    await finishJob(job.id, { kind: 'stop', error: 'The download tab was closed' });
+    if (job.tabId === tabId) {
+      await finishJob(job.id, { kind: 'stop', error: 'The download tab was closed' });
+    }
   }
 });
 

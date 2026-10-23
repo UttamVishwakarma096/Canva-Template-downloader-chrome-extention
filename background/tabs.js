@@ -32,6 +32,7 @@ export async function openJobTab(job) {
     const j = d.queue.find((x) => x.id === job.id);
     if (j) {
       j.tabId = tab.id;
+      j.templateTabId = tab.id; // Remember the initial template tab ID
       j.updatedAt = Date.now();
     }
   });
@@ -60,6 +61,31 @@ export async function closeTab(tabId) {
     await chrome.tabs.remove(tabId);
   } catch {
     // already closed
+  }
+}
+
+// Closes both the template tab and editor tab when a template job finishes.
+export async function closeJobTabs(job) {
+  if (!job) return;
+  const ids = new Set();
+  if (job.tabId) ids.add(job.tabId);
+  if (job.templateTabId) ids.add(job.templateTabId);
+
+  // Also check worker window for any leftover Canva tabs from this job
+  try {
+    const { workerWindowId } = await chrome.storage.local.get('workerWindowId');
+    if (workerWindowId != null) {
+      const tabs = await chrome.tabs.query({ windowId: workerWindowId });
+      for (const t of tabs) {
+        if (t.url && (t.url.includes('/templates/') || t.url.includes('/design/'))) {
+          ids.add(t.id);
+        }
+      }
+    }
+  } catch (_) {}
+
+  for (const tid of ids) {
+    await closeTab(tid);
   }
 }
 

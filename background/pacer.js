@@ -1,7 +1,7 @@
 // Decides when the next template starts: one at a time, random waits,
 // hourly and daily limits. Also ends each job and restarts after a reboot.
 import { update, read, settings, activeJob, isActive, today } from './store.js';
-import { openJobTab, closeTab, closeWorkerWindow } from './tabs.js';
+import { openJobTab, closeTab, closeJobTabs, closeWorkerWindow } from './tabs.js';
 import { notify, keepAwake } from './notify.js';
 import { maybeBuildZip } from './downloads.js';
 
@@ -105,12 +105,12 @@ export async function tick() {
 // result: { ok: true, loose? } or { kind: 'retry' | 'skip' | 'stop', error }
 export async function finishJob(jobId, result) {
   const s = await settings();
-  let tabId = null;
+  let jobToClose = null;
   let stopped = null;
   const handled = await update((d) => {
     const job = d.queue.find((j) => j.id === jobId);
     if (!job || d.state.activeJobId !== jobId) return false;
-    tabId = job.tabId;
+    jobToClose = { ...job };
     if (result.ok) {
       job.state = 'done';
       job.error = result.loose ? 'Saved outside the ZIP (in the not-in-zip folder)' : null;
@@ -137,13 +137,14 @@ export async function finishJob(jobId, result) {
       d.stats.dayFailed++;
     }
     job.tabId = null;
+    job.templateTabId = null;
     job.updatedAt = Date.now();
     d.state.activeJobId = null;
     d.state.nextAt = Date.now() + randomWait(s);
     return true;
   });
   if (!handled) return;
-  await closeTab(tabId);
+  await closeJobTabs(jobToClose);
   if (stopped) {
     keepAwake(false);
     notify('Canva download stopped', `${stopped}. Fix it, then press Start in the popup.`);
@@ -177,21 +178,22 @@ export async function pause() {
 
 // After Chrome or the PC restarts: the open job starts again from the beginning.
 export async function restore() {
-  let tabId = null;
+  let jobToClose = null;
   await update((d) => {
     const job = activeJob(d);
     if (isActive(job)) {
-      tabId = job.tabId;
+      jobToClose = { ...job };
       job.state = 'queued';
       job.attempts = Math.max(0, (job.attempts || 1) - 1);
       job.tabId = null;
+      job.templateTabId = null;
     }
     d.state.activeJobId = null;
     d.state.zipBuilding = false;
     d.state.zipDownloadId = null;
     d.state.nextAt = 0;
   });
-  await closeTab(tabId);
+  await closeJobTabs(jobToClose);
   const { state } = await read();
   if (state.running) {
     keepAwake(true);
