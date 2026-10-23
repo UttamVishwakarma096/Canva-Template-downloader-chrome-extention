@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Canva Bulk PPTX Downloader: Settings</title>
+    <style>
+      body { max-width: 560px; margin: 32px auto; padding: 0 16px; font: 14px/1.5 system-ui, sans-serif; color: #1f2328; }
+      h1 { font-size: 20px; }
+      h2 { font-size: 15px; margin-top: 28px; }
+      label { display: grid; grid-template-columns: 1fr 140px; gap: 12px; align-items: center; margin: 10px 0; }
+      input[type='number'], input[type='text'] { padding: 5px 8px; font: inherit; }
+      .hint { color: #57606a; font-size: 12px; margin: -4px 0 8px; }
+      button { padding: 7px 14px; border: 1px solid #7d2ae8; border-radius: 6px; background: #7d2ae8; color: #fff; font: inherit; cursor: pointer; }
+      #msg, #import-msg { color: #1a7f37; margin-left: 10px; }
+    </style>
+  </head>
+  <body>
+    <h1>Settings</h1>
+    <p class="hint">Every file is saved as PPTX (PowerPoint). Canva does not publish a website limit, so keep the numbers low.</p>
+
+    <form id="form">
+      <label>Folder in Downloads <input type="text" name="folder" required /></label>
+      <label>Shortest wait between templates (seconds) <input type="number" name="minWaitSec" min="5" max="600" required /></label>
+      <label>Longest wait between templates (seconds) <input type="number" name="maxWaitSec" min="5" max="900" required /></label>
+      <label>Templates per hour <input type="number" name="perHour" min="1" max="120" required /></label>
+      <label>Templates per day <input type="number" name="perDay" min="1" max="1000" required /></label>
+      <p class="hint">Start with 50 to 100 per day in the first week. Raise it only if Canva shows no warnings.</p>
+      <label>Templates in one ZIP file <input type="number" name="perZip" min="1" max="500" required /></label>
+      <label>Tries per template <input type="number" name="maxAttempts" min="1" max="10" required /></label>
+      <label>Give up on a stuck template after (seconds) <input type="number" name="jobTimeoutSec" min="30" max="900" required /></label>
+      <button type="submit">Save</button><span id="msg"></span>
+    </form>
+
+    <h2>Import links from a file</h2>
+    <p class="hint">A .txt or .csv file with Canva template links. All links found in the file are added.</p>
+    <input type="file" id="file" accept=".txt,.csv,text/plain,text/csv" />
+    <span id="import-msg"></span>
+
+    <script src="options.js" type="module"></script>
+  </body>
+</html>

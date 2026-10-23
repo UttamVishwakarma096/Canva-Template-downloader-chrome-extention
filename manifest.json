@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Canva Bulk PPTX Downloader",
+  "version": "0.1.7",
+  "description": "Pick Canva templates fast, then download them one by one as PPTX and pack them into ZIP files.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "storage",
+    "downloads",
+    "alarms",
+    "scripting",
+    "offscreen",
+    "unlimitedStorage",
+    "notifications",
+    "power"
+  ],
+  "host_permissions": ["https://*.canva.com/*"],
+  "background": { "service_worker": "background/index.js", "type": "module" },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+  },
+  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "options_page": "options/options.html",
+  "content_scripts": [
+    {
+      "matches": ["https://www.canva.com/*"],
+      "exclude_matches": ["https://www.canva.com/design/*"],
+      "js": ["content/selectors.js", "content/picker.js"],
+      "css": ["content/picker.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

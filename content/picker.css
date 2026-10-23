@@ -1,0 +1,64 @@
+.cbq-box {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 50;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: #7d2ae8;
+}
+
+.cbq-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483646;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 210px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #fff;
+  color: #1f2328;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
+  font: 13px/1.35 system-ui, sans-serif;
+}
+
+.cbq-panel[hidden],
+.cbq-panel button[hidden] {
+  display: none;
+}
+
+.cbq-title {
+  font-weight: 600;
+}
+
+.cbq-panel button {
+  padding: 6px 10px;
+  border: 1px solid #c9ccd1;
+  border-radius: 6px;
+  background: #f6f7f9;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.cbq-panel button.cbq-main {
+  border-color: #7d2ae8;
+  background: #7d2ae8;
+  color: #fff;
+}
+
+.cbq-found {
+  color: #57606a;
+  font-size: 12px;
+}
+
+.cbq-msg {
+  min-height: 1em;
+  color: #57606a;
+  font-size: 12px;
+}

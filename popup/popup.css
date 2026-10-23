@@ -1,0 +1,145 @@
+body {
+  width: 360px;
+  margin: 0;
+  padding: 12px 14px;
+  font: 13px/1.4 system-ui, sans-serif;
+  color: #1f2328;
+  background: #fff;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+h1 {
+  margin: 0;
+  font-size: 16px;
+}
+
+h2 {
+  margin: 14px 0 6px;
+  font-size: 13px;
+}
+
+.badge {
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #eaeef2;
+  font-size: 12px;
+}
+
+.badge.running {
+  background: #dafbe1;
+  color: #1a7f37;
+}
+
+.badge.paused {
+  background: #fff8c5;
+  color: #9a6700;
+}
+
+.reason {
+  margin: 8px 0 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #fff8c5;
+}
+
+.numbers {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+  text-align: center;
+}
+
+.numbers b {
+  display: block;
+  font-size: 18px;
+}
+
+.numbers span,
+.muted {
+  color: #57606a;
+  font-size: 12px;
+}
+
+.muted {
+  margin: 4px 0;
+}
+
+.buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+button {
+  padding: 6px 8px;
+  border: 1px solid #c9ccd1;
+  border-radius: 6px;
+  background: #f6f7f9;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.main {
+  border-color: #7d2ae8;
+  background: #7d2ae8;
+  color: #fff;
+}
+
+textarea {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 6px 0;
+  font: 12px monospace;
+}
+
+ul {
+  max-height: 220px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+li {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  padding: 5px 0;
+  border-bottom: 1px solid #eaeef2;
+}
+
+li .t {
+  flex: 1;
+  min-width: 0;
+}
+
+li .name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+li .err {
+  display: block;
+  color: #cf222e;
+  font-size: 11px;
+}
+
+li .state {
+  font-size: 11px;
+  color: #57606a;
+  white-space: nowrap;
+}
+
+li button {
+  padding: 1px 6px;
+  font-size: 11px;
+}
