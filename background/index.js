@@ -288,6 +288,18 @@ const handlers = {
       }
     } catch (_) {}
   },
+  GET_JOB_STATUS: async (m, sender) => {
+    const d = await read();
+    const job = activeJob(d);
+    if (!job || job.id !== m.jobId) return { active: false, switchedTab: false };
+    const senderTabId = sender?.tab?.id;
+    return {
+      active: true,
+      tabId: job.tabId,
+      step: job.step,
+      switchedTab: Boolean(senderTabId && job.tabId && job.tabId !== senderTabId),
+    };
+  },
 };
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {

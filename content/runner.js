@@ -228,18 +228,62 @@
     const main = document.querySelector('main, [role="main"], [role="dialog"]') || document.body;
     const elements = [...main.querySelectorAll('*')].filter(visible);
     return elements.some((el) => {
-      if (el.closest('header, nav, [role="banner"], [aria-label*="navigation" i]')) return false;
+      if (el.closest('header, nav, [role="banner"], [role="navigation"], [aria-label*="navigation" i]')) return false;
 
       const aria = norm(el.getAttribute('aria-label') || '');
       const title = norm(el.getAttribute('title') || '');
       const testId = norm(el.getAttribute('data-testid') || '');
+      const dataIcon = norm(el.getAttribute('data-icon') || '');
+      const cls = norm(typeof el.className === 'string' ? el.className : '');
 
       if (aria === 'pro' || aria === 'canva pro' || title === 'pro' || title === 'canva pro') return true;
-      if (aria.includes('crown') || title.includes('crown') || testId.includes('crown')) return true;
-      if (testId.includes('pro-badge') || testId.includes('premium-badge')) return true;
+      if (aria.includes('crown') || title.includes('crown') || testId.includes('crown') || dataIcon.includes('crown')) return true;
+      if (testId.includes('pro-badge') || testId.includes('premium-badge') || cls.includes('probadge') || cls.includes('crown')) return true;
+
+      // Small badge pill with visible text "Pro" or "PRO"
+      if (el.children.length === 0) {
+        const text = (el.textContent || '').trim();
+        if (text === 'Pro' || text === 'PRO') {
+          const rect = el.getBoundingClientRect();
+          if (rect.width > 0 && rect.width < 120 && rect.height > 0 && rect.height < 60) {
+            return true;
+          }
+        }
+      }
+
+      // Check SVG crown icons
+      if (el.tagName && el.tagName.toLowerCase() === 'svg') {
+        if (cls.includes('crown') || dataIcon.includes('crown')) return true;
+        const paths = el.querySelectorAll('path');
+        for (const p of paths) {
+          const pId = norm(p.getAttribute('id') || '');
+          const pCls = norm(p.getAttribute('class') || '');
+          if (pId.includes('crown') || pCls.includes('crown')) return true;
+        }
+      }
 
       return false;
     });
+  }
+
+  // Check if a specific button is marked with Pro / Crown indicators
+  function isButtonPro(btn) {
+    if (!btn) return false;
+    const txt = norm(btn.textContent || '');
+    const aria = norm(btn.getAttribute('aria-label') || '');
+    if ((S.proCtaButtons || []).some((w) => txt.includes(norm(w)) || aria.includes(norm(w)))) return true;
+    if ((S.proSigns || []).some((w) => txt.includes(norm(w)) || aria.includes(norm(w)))) return true;
+
+    const icons = btn.querySelectorAll('svg, [data-icon="crown"], [aria-label*="crown" i], [aria-label*="pro" i]');
+    for (const icon of icons) {
+      const sAria = norm(icon.getAttribute('aria-label') || '');
+      const sIcon = norm(icon.getAttribute('data-icon') || '');
+      if (sAria.includes('crown') || sAria.includes('pro') || sIcon.includes('crown')) return true;
+    }
+    for (const child of btn.querySelectorAll('*')) {
+      if (child.children.length === 0 && (child.textContent || '').trim().toUpperCase() === 'PRO') return true;
+    }
+    return false;
   }
 
   // Check if an open modal dialog or overlay asks for Canva Pro or payment
@@ -251,34 +295,73 @@
     });
   }
 
+  // Check visible text across overlays or main body (excluding global top nav) for Pro paywall signs
+  function hasProText() {
+    const overlays = [...document.querySelectorAll(
+      '[role="dialog"], [aria-modal="true"], [data-modal="true"], [class*="modal" i], [class*="dialog" i], [class*="overlay" i], [class*="sheet" i], [class*="drawer" i], [class*="popup" i]'
+    )].filter(visible);
+
+    for (const o of overlays) {
+      const txt = norm(o.innerText || o.textContent);
+      if (S.proSigns.some((w) => txt.includes(w))) return true;
+    }
+
+    const main = document.querySelector('main, [role="main"]') || document.body;
+    if (main) {
+      const clone = main.cloneNode(true);
+      for (const el of clone.querySelectorAll('header, nav, [role="banner"], [role="navigation"], [aria-label*="navigation" i]')) {
+        el.remove();
+      }
+      const txt = norm(clone.textContent || '');
+      const templateProSigns = [
+        'try canva pro',
+        'upgrade to canva pro',
+        'get canva pro',
+        'unlock with canva pro',
+        'unlock this template',
+        'start free trial',
+        'start your free trial',
+        'try it free for 30 days',
+        'included with canva pro',
+        'canva pro template',
+        'premium template',
+        'cancel anytime',
+        'switch to canva pro',
+        'go pro',
+      ];
+      if (templateProSigns.some((w) => txt.includes(w))) return true;
+    }
+
+    return false;
+  }
+
   // Check if a paywall overlay/modal is visible with trial or upgrade CTA
   function isPaywallVisible() {
     const paywallWords = [
       'try it free for 30 days',
+      'try canva pro for free',
       'start your free trial',
       'start free trial',
       'start 30-day free trial',
       'start trial',
       'upgrade to canva pro',
+      'upgrade to pro',
       'try canva pro',
+      'try pro',
       'get canva pro',
       'unlock with canva pro',
       'unlock this template',
       'canva pro template',
       'premium template',
       'cancel anytime',
+      'switch to canva pro',
+      'subscribe to canva pro',
     ];
 
-    const overlays = [...document.querySelectorAll('[role="dialog"], [aria-modal="true"], [data-modal="true"], div[class*="modal" i], div[class*="dialog" i], div[class*="overlay" i]')].filter(visible);
+    const overlays = [...document.querySelectorAll('[role="dialog"], [aria-modal="true"], [data-modal="true"], div[class*="modal" i], div[class*="dialog" i], div[class*="overlay" i], div[class*="popup" i]')].filter(visible);
     for (const o of overlays) {
       const txt = norm(o.innerText || o.textContent);
-      if (paywallWords.some((w) => txt.includes(w))) {
-        const hasCta = paywallWords.some((w) => {
-          const btn = o.querySelector('button, a, [role="button"]');
-          return btn && norm(btn.textContent).includes(w);
-        }) || txt.includes('cancel anytime') || txt.includes('monthly') || txt.includes('yearly') || txt.includes('free trial');
-        if (hasCta) return true;
-      }
+      if (paywallWords.some((w) => txt.includes(w))) return true;
     }
     return false;
   }
@@ -328,6 +411,7 @@
       hasProBadge() ||
       Boolean(findProTemplateCta()) ||
       hasProDialog() ||
+      hasProText() ||
       isPaywallVisible() ||
       hasPremiumInDownloadPanel()
     );
@@ -386,7 +470,7 @@
       }
 
       // Check again right before clicking
-      if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
+      if (isPro() || isButtonPro(use)) return result('skip', 'Needs Canva Pro / Premium template');
 
       await step('use-template');
       const anchor = use.tagName === 'A' ? use : use.closest('a');
@@ -400,8 +484,8 @@
         if (anchor && anchor !== use) press(anchor);
       }
 
-      // Actively watch for paywall modal or editor navigation
-      for (let sec = 0; sec < 15; sec++) {
+      // Actively watch for paywall modal, Pro badges, or editor navigation
+      for (let sec = 0; sec < 18; sec++) {
         await sleep(1000);
         if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
         if (S.editorPath.test(location.pathname)) {
@@ -412,9 +496,18 @@
 
       if (!S.editorPath.test(location.pathname)) {
         if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
-        // If Canva opened in a new tab, wait quietly while background worker switches tabs
-        await sleep(25000);
-        return;
+
+        const status = await send({ type: 'GET_JOB_STATUS', jobId });
+        if (status && status.switchedTab) {
+          // Editor opened in a new tab; background worker took over
+          return;
+        }
+
+        // We clicked "Customize this template" 18 seconds ago, but:
+        // - We did not navigate to /design
+        // - No new tab was created for /design
+        // This means the template is blocked (Canva Pro / Premium paywall)
+        return result('skip', 'Needs Canva Pro / Premium template');
       }
     }
 
