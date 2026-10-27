@@ -11,6 +11,20 @@ self.CANVA_SELECTORS = {
   // Step 1, on the template page.
   useTemplate: ['Use this template', 'Customize this template', 'Customise this template', 'Use template'],
 
+  // Signs that the primary CTA on a template page requires Canva Pro / Premium
+  proCtaButtons: [
+    'upgrade to canva pro',
+    'try canva pro',
+    'get canva pro',
+    'unlock with canva pro',
+    'unlock this template',
+    'start free pro trial',
+    'start free trial',
+    'try pro free',
+    'buy this template',
+    'switch to canva pro',
+  ],
+
   // Steps 2 to 5, in the editor.
   share: ['Share'],
   download: ['Download'],
@@ -20,7 +34,7 @@ self.CANVA_SELECTORS = {
   pptxSelected: /pptx|powerpoint/i,
   finalDownload: ['Download'],
 
-  // Signs that something needs you or is Pro/Premium. Lower case.
+  // Signs that something needs you or is Pro/Premium inside dialogs or panels. Lower case.
   proSigns: [
     'upgrade to canva pro',
     'try canva pro',
@@ -28,13 +42,13 @@ self.CANVA_SELECTORS = {
     'start your free pro trial',
     'start free pro trial',
     'try pro free',
-    'try it free for 30 days',
     'unlock this template',
     'unlock with canva pro',
     'included with canva pro',
     'canva pro template',
     'premium template',
     'pay and download',
+    'download with canva pro',
     'buy this template',
     'contains premium elements',
     'contains paid elements',

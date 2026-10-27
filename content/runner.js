@@ -166,6 +166,7 @@
     const downloadButtons = allButtons.filter((b) => {
       const txt = norm(b.textContent);
       const aria = norm(b.getAttribute('aria-label') || '');
+      if (txt.includes('pay and download') || txt.includes('download with canva pro')) return false;
       return want.includes(txt) || want.includes(aria);
     });
 
@@ -175,6 +176,7 @@
 
     return allButtons.find((b) => {
       const txt = norm(b.textContent);
+      if (txt.includes('pay and download') || txt.includes('download with canva pro')) return false;
       return txt.startsWith('download') && b.getBoundingClientRect().width > 100;
     }) || null;
   }
@@ -200,26 +202,56 @@
     });
   }
 
-  const dialogHas = (words) =>
-    [...document.querySelectorAll('[role="dialog"], [aria-modal="true"]')].some((el) => {
-      const text = norm(el.innerText);
-      return words.some((w) => text.includes(w));
+  // Check if an open modal dialog asks for Canva Pro or payment
+  function hasProDialog() {
+    const dialogs = [...document.querySelectorAll('[role="dialog"], [aria-modal="true"]')].filter(visible);
+    return dialogs.some((d) => {
+      const txt = norm(d.innerText || d.textContent);
+      return S.proSigns.some((w) => txt.includes(w));
     });
+  }
+
+  // Check if the template landing page CTA button is an "Upgrade / Pro" button
+  function findProTemplateCta() {
+    const proWords = (S.proCtaButtons || []).map(norm);
+    const els = [...document.querySelectorAll(S.clickable)].filter(visible);
+    // Ignore top global navigation bar and header elements
+    const mainEls = els.filter((el) => !el.closest('header, nav, [role="banner"], [aria-label*="navigation" i]'));
+    for (const w of proWords) {
+      const hit = mainEls.find((el) => {
+        const l = labelOf(el);
+        return l === w || l.startsWith(w);
+      });
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  // Check if the Download panel indicates premium / paid items
+  function hasPremiumInDownloadPanel() {
+    const buttons = [...document.querySelectorAll('button, [role="button"]')].filter(visible);
+    const premiumBtn = buttons.some((b) => {
+      const txt = norm(b.textContent);
+      const aria = norm(b.getAttribute('aria-label') || '');
+      return (
+        txt.includes('pay and download') ||
+        txt.includes('download with canva pro') ||
+        aria.includes('pay and download') ||
+        aria.includes('download with canva pro')
+      );
+    });
+    if (premiumBtn) return true;
+
+    const panels = [...document.querySelectorAll('[role="dialog"], [role="region"], [aria-label*="download" i]')].filter(visible);
+    const terms = ['pay and download', 'download with canva pro', 'contains premium', 'premium image', 'premium elements', 'pay for images'];
+    return panels.some((p) => {
+      const txt = norm(p.innerText || p.textContent);
+      return terms.some((t) => txt.includes(t));
+    });
+  }
 
   function isPro() {
-    if (dialogHas(S.proSigns)) return true;
-
-    // Check for Pro/Premium badges or banners visible on the page
-    const elements = [...document.querySelectorAll('[role="dialog"], [role="alert"], [aria-label], button, a, h1, h2, h3, h4, p, span, div')].filter(visible);
-    return elements.some((el) => {
-      const aria = norm(el.getAttribute('aria-label') || '');
-      const title = norm(el.getAttribute('title') || '');
-      const text = norm(el.textContent || '');
-      if (S.proSigns.some((w) => aria === w || title === w || text === w)) return true;
-      if (text.length < 100 && S.proSigns.some((w) => text.includes(w))) return true;
-      if ((aria.includes('crown') || aria.includes('pro badge') || aria.includes('canva pro')) && (text.includes('pro') || text.includes('trial') || text.includes('upgrade'))) return true;
-      return false;
-    });
+    return hasProDialog() || Boolean(findProTemplateCta()) || hasPremiumInDownloadPanel();
   }
 
   const send = (msg) => chrome.runtime.sendMessage(msg).catch(() => {});
@@ -260,33 +292,13 @@
 
     const p = problem();
     if (p) return result(...p);
-    if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
 
     // ── Step 1: Open template / editor ──────────────────────────────────────
-    const waitForEditor = () =>
-      new Promise((resolve) => {
-        const t0 = Date.now();
-        const timer = setInterval(() => {
-          if (isPro()) {
-            clearInterval(timer);
-            resolve('pro');
-          } else if (S.editorPath.test(location.pathname)) {
-            clearInterval(timer);
-            resolve(true);
-          } else if (Date.now() - t0 > S.editorLoadSec * 1000) {
-            clearInterval(timer);
-            resolve(false);
-          }
-        }, 500);
-      });
-
-    if (afterUse && !S.editorPath.test(location.pathname)) {
-      const ed = await waitForEditor();
-      if (ed === 'pro' || isPro()) return result('skip', 'Needs Canva Pro / Premium template');
-      if (!ed) return notFound('the editor');
+    if (S.editorPath.test(location.pathname)) {
       await step('editor-opened');
-    } else if (!S.editorPath.test(location.pathname)) {
+    } else {
       if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
+
       const use = await waitFor(() => findByText(S.useTemplate), T * 2);
       if (!use) {
         if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
@@ -300,12 +312,24 @@
         send({ type: 'NAVIGATE_JOB', jobId, url: href });
       } else {
         press(use);
+        const inner = use.querySelector('span, div, p');
+        if (inner && inner !== use) press(inner);
       }
 
-      const ed = await waitForEditor();
-      if (ed === 'pro' || isPro()) return result('skip', 'Needs Canva Pro / Premium template');
-      if (!ed) return notFound('the editor');
-      await step('editor-opened');
+      // Check if clicking triggered an upgrade paywall dialog
+      const proHit = await waitFor(() => (hasProDialog() || findProTemplateCta() ? true : null), 3);
+      if (proHit) return result('skip', 'Needs Canva Pro / Premium template');
+
+      // If the editor opens in the same tab, wait briefly for navigation
+      const inSameTab = await waitFor(() => (S.editorPath.test(location.pathname) ? true : null), 6);
+      if (inSameTab) {
+        await step('editor-opened');
+      } else {
+        // Canva is opening the editor in a new tab. The background worker will
+        // follow the new tab and close this template tab. Wait quietly.
+        await sleep(30000);
+        return;
+      }
     }
 
     // ── Step 2: Open Share Menu → Click Download ────────────────────────────
@@ -322,8 +346,13 @@
     await sleep(600);
 
     // ── Step 3: Select Microsoft PowerPoint Document (.pptx) ────────────────
+    if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
+
     let typeMenu = await waitFor(findFileTypeMenu, T);
-    if (!typeMenu) return notFound('File type dropdown');
+    if (!typeMenu) {
+      if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
+      return notFound('File type dropdown');
+    }
 
     const isPptxSelected = () => {
       const m = findFileTypeMenu();
@@ -371,12 +400,17 @@
     await sleep(600);
 
     // ── Step 4: Click the purple Download button ────────────────────────────
+    if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
+
     const finalButton = await waitFor(findFinalDownload, T);
-    if (!finalButton) return notFound('Download button');
+    if (!finalButton) {
+      if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
+      return notFound('Download button');
+    }
     await step('download-clicked');
     press(finalButton);
 
-    const proImmediate = await waitFor(() => (isPro() ? true : null), 3);
+    const proImmediate = await waitFor(() => (isPro() ? true : null), 4);
     if (proImmediate) return result('skip', 'Needs Canva Pro / Premium template');
 
     // Keep watchdog refreshed while Canva compiles the PPTX on its servers
@@ -395,12 +429,6 @@
       }
     }
   }
-
-  window.addEventListener('message', (ev) => {
-    if (ev.data && ev.data.type === '__CANVA_OPEN_URL__' && ev.data.url && runningJob) {
-      send({ type: 'NAVIGATE_JOB', jobId: runningJob, url: ev.data.url });
-    }
-  });
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (!msg || msg.type !== 'RUN' || msg.jobId === runningJob) return;

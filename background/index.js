@@ -20,12 +20,18 @@ function setupContentSettings() {
   try {
     if (chrome.contentSettings && chrome.contentSettings.popups) {
       chrome.contentSettings.popups.set({
-        primaryPattern: 'https://*.canva.com/*',
+        primaryPattern: '*://*.canva.com/*',
+        setting: 'allow',
+      });
+      chrome.contentSettings.popups.set({
+        primaryPattern: '*://canva.com/*',
         setting: 'allow',
       });
     }
   } catch (_) {}
 }
+
+setupContentSettings();
 
 chrome.runtime.onInstalled.addListener(() => {
   setupAlarms();
