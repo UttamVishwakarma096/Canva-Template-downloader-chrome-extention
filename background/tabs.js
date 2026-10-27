@@ -51,9 +51,7 @@ export async function openJobTab(job) {
 // The runner is not in the manifest: it only goes into tabs the extension opened.
 // afterUse: "Use this template" was already clicked; only the editor steps are left.
 export async function injectRunner(tabId, jobId, afterUse) {
-  // 1. Install interceptor in the page's MAIN execution world to disable focus-stealing
-  // and force window.open to navigate in the current tab instead of opening popups/tabs
-  // that cause Windows to switch virtual desktops.
+  // Disarm focus stealing: prevent Canva from stealing window focus
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
@@ -61,41 +59,12 @@ export async function injectRunner(tabId, jobId, afterUse) {
       func: () => {
         if (window.__canvaBulkInterceptorInstalled) return;
         window.__canvaBulkInterceptorInstalled = true;
-
-        // Disarm focus stealing: prevent Canva or window.open from switching Windows virtual desktops
         window.focus = function () {};
-
-        // Redirect window.open to in-place navigation
-        const origOpen = window.open;
-        window.open = function (url, target, features) {
-          if (url && typeof url === 'string') {
-            window.location.href = url;
-            return window;
-          }
-          const proxy = {
-            set location(val) {
-              if (typeof val === 'string') {
-                window.location.href = val;
-              } else if (val && val.href) {
-                window.location.href = val.href;
-              }
-            },
-            get location() {
-              return window.location;
-            },
-            focus() {},
-            blur() {},
-            close() {},
-            closed: false,
-            document: window.document,
-          };
-          return proxy;
-        };
       },
     });
   } catch (_) {}
 
-  // 2. Inject selectors and runner in the isolated world
+  // Inject selectors and runner in the isolated world
   await chrome.scripting.executeScript({
     target: { tabId },
     files: ['content/selectors.js', 'content/runner.js'],

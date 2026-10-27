@@ -264,17 +264,6 @@
       const use = await waitFor(() => findByText(S.useTemplate), T * 2);
       if (!use) return notFound(S.useTemplate[0]);
 
-      // Strip target="_blank" so the editor opens in the same tab instead of opening a popup
-      const anchor = use.tagName === 'A' ? use : use.closest('a');
-      if (anchor) {
-        anchor.removeAttribute('target');
-        anchor.target = '_self';
-      }
-      document.querySelectorAll('a[target="_blank"]').forEach((a) => {
-        a.removeAttribute('target');
-        a.target = '_self';
-      });
-
       await step('use-template');
       press(use);
       if (!(await waitForEditor())) return;
