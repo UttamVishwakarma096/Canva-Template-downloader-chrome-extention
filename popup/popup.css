@@ -49,15 +49,49 @@ h2 {
 
 .numbers {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
   margin-top: 10px;
   text-align: center;
 }
 
 .numbers b {
   display: block;
-  font-size: 18px;
+  font-size: 16px;
+}
+
+.gold {
+  color: #b08800 !important;
+}
+
+.gold-star {
+  font-size: 13px;
+  margin-right: 2px;
+}
+
+details#premium-details {
+  margin: 10px 0;
+  padding: 6px 8px;
+  border: 1px solid #e3c563;
+  border-radius: 6px;
+  background: #fffdf5;
+}
+
+details#premium-details summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.premium-actions {
+  display: flex;
+  gap: 5px;
+  margin: 6px 0;
+}
+
+.premium-actions button {
+  flex: 1;
+  padding: 4px 6px;
+  font-size: 11px;
 }
 
 .numbers span,

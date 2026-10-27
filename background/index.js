@@ -225,7 +225,38 @@ async function status() {
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 40)
     .map(({ id, title, url, state, step, error, attempts }) => ({ id, title, url, state, step, error, attempts }));
-  return { state: d.state, stats: d.stats, settings: s, counts, eta, recent, storedFiles: await countFiles() };
+
+  // Auto-collect any already-skipped Pro templates from queue into premiumQueue
+  const proKnown = new Set((d.premiumQueue || []).map((p) => p.url));
+  let proAdded = false;
+  for (const j of d.queue) {
+    if (j.state === 'skipped' && /pro|premium|paid|subscription/i.test(j.error || '') && !proKnown.has(j.url)) {
+      if (!d.premiumQueue) d.premiumQueue = [];
+      d.premiumQueue.push({
+        id: `pro_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+        url: j.url,
+        title: j.title || 'Canva Pro Template',
+        error: j.error,
+        addedAt: j.updatedAt || Date.now(),
+      });
+      proKnown.add(j.url);
+      proAdded = true;
+    }
+  }
+  if (proAdded) {
+    chrome.storage.local.set({ premiumQueue: d.premiumQueue });
+  }
+
+  return {
+    state: d.state,
+    stats: d.stats,
+    settings: s,
+    counts,
+    eta,
+    recent,
+    storedFiles: await countFiles(),
+    premiumQueue: d.premiumQueue || [],
+  };
 }
 
 // ---------- messages from popup, options, picker and runner ----------
@@ -254,6 +285,67 @@ const handlers = {
   CLEAR_DONE: () =>
     update((d) => {
       d.queue = d.queue.filter((j) => !['done', 'skipped'].includes(j.state));
+    }),
+  MOVE_PREMIUM_TO_QUEUE: () =>
+    update((d) => {
+      if (!d.premiumQueue || !d.premiumQueue.length) return { moved: 0 };
+      let moved = 0;
+      for (const item of d.premiumQueue) {
+        const existing = d.queue.find((j) => j.url === item.url);
+        if (existing) {
+          if (existing.state !== 'done') {
+            Object.assign(existing, { state: 'queued', attempts: 0, error: null, updatedAt: Date.now() });
+            moved++;
+          }
+        } else {
+          d.queue.push({
+            id: `job_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+            url: item.url,
+            title: item.title,
+            state: 'queued',
+            step: null,
+            attempts: 0,
+            tabId: null,
+            downloadId: null,
+            error: null,
+            addedAt: Date.now(),
+            updatedAt: Date.now(),
+          });
+          moved++;
+        }
+      }
+      return { moved };
+    }),
+  RETRY_PREMIUM_JOB: (m) =>
+    update((d) => {
+      const item = (d.premiumQueue || []).find((p) => p.id === m.id || p.url === m.url);
+      if (!item) return;
+      const existing = d.queue.find((j) => j.url === item.url);
+      if (existing) {
+        Object.assign(existing, { state: 'queued', attempts: 0, error: null, updatedAt: Date.now() });
+      } else {
+        d.queue.push({
+          id: `job_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+          url: item.url,
+          title: item.title,
+          state: 'queued',
+          step: null,
+          attempts: 0,
+          tabId: null,
+          downloadId: null,
+          error: null,
+          addedAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      }
+    }),
+  REMOVE_PREMIUM_JOB: (m) =>
+    update((d) => {
+      d.premiumQueue = (d.premiumQueue || []).filter((p) => p.id !== m.id && p.url !== m.url);
+    }),
+  CLEAR_PREMIUM_QUEUE: () =>
+    update((d) => {
+      d.premiumQueue = [];
     }),
   STEP: (m) =>
     update((d) => {

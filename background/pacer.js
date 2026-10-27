@@ -119,6 +119,21 @@ export async function finishJob(jobId, result) {
       job.state = 'skipped';
       job.error = result.error;
       d.stats.daySkipped++;
+
+      // When tagged as Pro / Premium, place in dedicated premiumQueue for future download
+      if (/pro|premium|paid|subscription/i.test(result.error || '')) {
+        if (!d.premiumQueue) d.premiumQueue = [];
+        const exists = d.premiumQueue.some((p) => p.url === job.url);
+        if (!exists) {
+          d.premiumQueue.push({
+            id: `pro_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+            url: job.url,
+            title: job.title || 'Canva Pro Template',
+            error: result.error,
+            addedAt: Date.now(),
+          });
+        }
+      }
     } else if (result.kind === 'stop') {
       // Not the template's fault: put it back and stop everything.
       job.state = 'queued';

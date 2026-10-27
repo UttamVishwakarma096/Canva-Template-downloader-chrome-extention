@@ -18,6 +18,7 @@
       <div><b id="n-done">0</b><span>saved</span></div>
       <div><b id="n-skipped">0</b><span>skipped</span></div>
       <div><b id="n-failed">0</b><span>failed</span></div>
+      <div><b id="n-premium" class="gold">0</b><span>premium</span></div>
     </section>
     <p id="eta" class="muted"></p>
     <p id="today" class="muted"></p>
@@ -32,6 +33,18 @@
       <button id="debug">Copy debug info</button>
     </div>
 
+    <details id="premium-details">
+      <summary><span class="gold-star">⭐</span> <b>Premium Queue (<span id="premium-count">0</span>)</b></summary>
+      <p class="muted" style="margin: 6px 0;">Templates requiring Canva Pro. Saved here for future download when using a Canva Pro account.</p>
+      <div class="premium-actions">
+        <button id="move-premium" class="main" title="Add all premium templates into the active download queue">Download with Pro</button>
+        <button id="copy-premium" title="Copy all premium template URLs to clipboard">Copy URLs</button>
+        <button id="clear-premium" title="Clear premium queue">Clear</button>
+      </div>
+      <p id="premium-msg" class="muted"></p>
+      <ul id="premium-list"></ul>
+    </details>
+
     <details>
       <summary>Paste template links</summary>
       <textarea id="links" rows="5" placeholder="One Canva template link per line"></textarea>
@@ -39,7 +52,7 @@
       <p id="add-msg" class="muted"></p>
     </details>
 
-    <h2>Queue</h2>
+    <h2>Active Queue</h2>
     <ul id="list"></ul>
 
     <script src="popup.js" type="module"></script>

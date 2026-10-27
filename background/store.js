@@ -34,9 +34,10 @@ export async function settings() {
 }
 
 export async function read() {
-  const d = await chrome.storage.local.get(['queue', 'state', 'stats']);
+  const d = await chrome.storage.local.get(['queue', 'premiumQueue', 'state', 'stats']);
   return {
     queue: d.queue || [],
+    premiumQueue: d.premiumQueue || [],
     state: { ...emptyState(), ...d.state },
     stats: { ...emptyStats(), ...d.stats },
   };
@@ -48,7 +49,12 @@ export function update(mutate) {
   const run = chain.then(async () => {
     const d = await read();
     const out = await mutate(d);
-    await chrome.storage.local.set({ queue: d.queue, state: d.state, stats: d.stats });
+    await chrome.storage.local.set({
+      queue: d.queue,
+      premiumQueue: d.premiumQueue,
+      state: d.state,
+      stats: d.stats,
+    });
     return out;
   });
   chain = run.catch(() => {});
