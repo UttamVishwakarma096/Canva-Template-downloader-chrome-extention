@@ -205,13 +205,82 @@
     });
   }
 
-  // Check if an open modal dialog asks for Canva Pro or payment
+  // Check if this template is marked as Canva Pro or Paid in Canva's embedded page data
+  function isProFromPageData() {
+    const m = location.pathname.match(/\/(EA[A-Za-z0-9_-]{6,})/);
+    const templateId = m ? m[1] : '';
+    if (!templateId) return false;
+
+    // Canva encodes template license in JSON state as: "DI":"<id>",...,"DL":"canva_pro" or "DL":"paid"
+    const regex = new RegExp(
+      `"${templateId}"[\\s\\S]{0,350}"DL"\\s*:\\s*"(canva_pro|paid|canva:paid|canva:pro)"|"DL"\\s*:\\s*"(canva_pro|paid|canva:paid|canva:pro)"[\\s\\S]{0,350}"${templateId}"`
+    );
+    const scripts = document.querySelectorAll('script');
+    for (const s of scripts) {
+      if (s.textContent && regex.test(s.textContent)) return true;
+    }
+    if (regex.test(document.documentElement.innerHTML.slice(0, 600000))) return true;
+    return false;
+  }
+
+  // Check for crown icons, pro badges or aria-labels in the main template container
+  function hasProBadge() {
+    const main = document.querySelector('main, [role="main"], [role="dialog"]') || document.body;
+    const elements = [...main.querySelectorAll('*')].filter(visible);
+    return elements.some((el) => {
+      if (el.closest('header, nav, [role="banner"], [aria-label*="navigation" i]')) return false;
+
+      const aria = norm(el.getAttribute('aria-label') || '');
+      const title = norm(el.getAttribute('title') || '');
+      const testId = norm(el.getAttribute('data-testid') || '');
+
+      if (aria === 'pro' || aria === 'canva pro' || title === 'pro' || title === 'canva pro') return true;
+      if (aria.includes('crown') || title.includes('crown') || testId.includes('crown')) return true;
+      if (testId.includes('pro-badge') || testId.includes('premium-badge')) return true;
+
+      return false;
+    });
+  }
+
+  // Check if an open modal dialog or overlay asks for Canva Pro or payment
   function hasProDialog() {
-    const dialogs = [...document.querySelectorAll('[role="dialog"], [aria-modal="true"]')].filter(visible);
+    const dialogs = [...document.querySelectorAll('[role="dialog"], [aria-modal="true"], [data-modal="true"], div[class*="modal" i]')].filter(visible);
     return dialogs.some((d) => {
       const txt = norm(d.innerText || d.textContent);
       return S.proSigns.some((w) => txt.includes(w));
     });
+  }
+
+  // Check if a paywall overlay/modal is visible with trial or upgrade CTA
+  function isPaywallVisible() {
+    const paywallWords = [
+      'try it free for 30 days',
+      'start your free trial',
+      'start free trial',
+      'start 30-day free trial',
+      'start trial',
+      'upgrade to canva pro',
+      'try canva pro',
+      'get canva pro',
+      'unlock with canva pro',
+      'unlock this template',
+      'canva pro template',
+      'premium template',
+      'cancel anytime',
+    ];
+
+    const overlays = [...document.querySelectorAll('[role="dialog"], [aria-modal="true"], [data-modal="true"], div[class*="modal" i], div[class*="dialog" i], div[class*="overlay" i]')].filter(visible);
+    for (const o of overlays) {
+      const txt = norm(o.innerText || o.textContent);
+      if (paywallWords.some((w) => txt.includes(w))) {
+        const hasCta = paywallWords.some((w) => {
+          const btn = o.querySelector('button, a, [role="button"]');
+          return btn && norm(btn.textContent).includes(w);
+        }) || txt.includes('cancel anytime') || txt.includes('monthly') || txt.includes('yearly') || txt.includes('free trial');
+        if (hasCta) return true;
+      }
+    }
+    return false;
   }
 
   // Check if the template landing page CTA button is an "Upgrade / Pro" button
@@ -254,7 +323,14 @@
   }
 
   function isPro() {
-    return hasProDialog() || Boolean(findProTemplateCta()) || hasPremiumInDownloadPanel();
+    return (
+      isProFromPageData() ||
+      hasProBadge() ||
+      Boolean(findProTemplateCta()) ||
+      hasProDialog() ||
+      isPaywallVisible() ||
+      hasPremiumInDownloadPanel()
+    );
   }
 
   const send = (msg) => chrome.runtime.sendMessage(msg).catch(() => {});
@@ -300,6 +376,7 @@
     if (S.editorPath.test(location.pathname)) {
       await step('editor-opened');
     } else {
+      // Instant detection: check if template is Pro in page metadata or markup
       if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
 
       const use = await waitFor(() => findByText(S.useTemplate), T * 2);
@@ -307,6 +384,9 @@
         if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
         return notFound(S.useTemplate[0]);
       }
+
+      // Check again right before clicking
+      if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
 
       await step('use-template');
       const anchor = use.tagName === 'A' ? use : use.closest('a');
@@ -320,17 +400,20 @@
         if (anchor && anchor !== use) press(anchor);
       }
 
-      // Check if clicking triggered an upgrade paywall dialog
-      const proHit = await waitFor(() => (hasProDialog() || findProTemplateCta() ? true : null), 3);
-      if (proHit) return result('skip', 'Needs Canva Pro / Premium template');
+      // Actively watch for paywall modal or editor navigation
+      for (let sec = 0; sec < 15; sec++) {
+        await sleep(1000);
+        if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
+        if (S.editorPath.test(location.pathname)) {
+          await step('editor-opened');
+          break;
+        }
+      }
 
-      // Wait for navigation to the editor (either in this tab via NAVIGATE_JOB or new tab)
-      const inSameTab = await waitFor(() => (S.editorPath.test(location.pathname) ? true : null), 8);
-      if (inSameTab) {
-        await step('editor-opened');
-      } else {
+      if (!S.editorPath.test(location.pathname)) {
+        if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
         // If Canva opened in a new tab, wait quietly while background worker switches tabs
-        await sleep(30000);
+        await sleep(25000);
         return;
       }
     }
