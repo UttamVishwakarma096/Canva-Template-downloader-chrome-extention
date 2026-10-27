@@ -265,8 +265,15 @@
       if (!use) return notFound(S.useTemplate[0]);
 
       await step('use-template');
-      press(use);
-      if (!(await waitForEditor())) return;
+      const anchor = use.tagName === 'A' ? use : use.closest('a');
+      const href = anchor && anchor.getAttribute('href');
+      if (href && href.includes('/design/')) {
+        send({ type: 'NAVIGATE_JOB', jobId, url: href });
+      } else {
+        press(use);
+      }
+
+      if (!(await waitForEditor())) return notFound('the editor');
       await step('editor-opened');
     }
 
@@ -357,6 +364,12 @@
       }
     }
   }
+
+  window.addEventListener('message', (ev) => {
+    if (ev.data && ev.data.type === '__CANVA_OPEN_URL__' && ev.data.url && runningJob) {
+      send({ type: 'NAVIGATE_JOB', jobId: runningJob, url: ev.data.url });
+    }
+  });
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (!msg || msg.type !== 'RUN' || msg.jobId === runningJob) return;

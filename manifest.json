@@ -12,7 +12,8 @@
     "offscreen",
     "unlimitedStorage",
     "notifications",
-    "power"
+    "power",
+    "contentSettings"
   ],
   "host_permissions": ["https://*.canva.com/*"],
   "background": { "service_worker": "background/index.js", "type": "module" },

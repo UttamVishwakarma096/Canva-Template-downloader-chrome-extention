@@ -16,13 +16,26 @@ function setupAlarms() {
   chrome.alarms.create('watchdog', { periodInMinutes: 1 });
 }
 
+function setupContentSettings() {
+  try {
+    if (chrome.contentSettings && chrome.contentSettings.popups) {
+      chrome.contentSettings.popups.set({
+        primaryPattern: 'https://*.canva.com/*',
+        setting: 'allow',
+      });
+    }
+  } catch (_) {}
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   setupAlarms();
+  setupContentSettings();
   restore();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   setupAlarms();
+  setupContentSettings();
   restore();
 });
 
@@ -250,6 +263,24 @@ const handlers = {
     const j = activeJob(d);
     if (!j || j.id !== m.jobId || j.state === 'downloading') return;
     await finishJob(m.jobId, { kind: m.kind, error: m.error });
+  },
+  NAVIGATE_JOB: async (m) => {
+    const d = await read();
+    const job = activeJob(d);
+    if (!job || job.id !== m.jobId || !job.tabId) return;
+    try {
+      const u = new URL(m.url, 'https://www.canva.com');
+      if (/(^|\.)canva\.com$/.test(u.hostname) && /^\/design/.test(u.pathname)) {
+        await update((x) => {
+          const j = x.queue.find((y) => y.id === job.id);
+          if (j) {
+            j.step = 'use-template';
+            j.updatedAt = Date.now();
+          }
+        });
+        await chrome.tabs.update(job.tabId, { url: u.href, active: true });
+      }
+    } catch (_) {}
   },
 };
 

@@ -52,6 +52,7 @@ export async function openJobTab(job) {
 // afterUse: "Use this template" was already clicked; only the editor steps are left.
 export async function injectRunner(tabId, jobId, afterUse) {
   // Disarm focus stealing: prevent Canva from stealing window focus
+  // and intercept window.open to forward editor URLs
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
@@ -60,6 +61,44 @@ export async function injectRunner(tabId, jobId, afterUse) {
         if (window.__canvaBulkInterceptorInstalled) return;
         window.__canvaBulkInterceptorInstalled = true;
         window.focus = function () {};
+
+        const origOpen = window.open;
+        window.open = function (url, target, features) {
+          if (url && typeof url === 'string' && url !== 'about:blank') {
+            window.postMessage({ type: '__CANVA_OPEN_URL__', url }, '*');
+          }
+          let win = null;
+          try {
+            win = origOpen.apply(this, arguments);
+          } catch (_) {}
+
+          if (!win) {
+            const notify = (u) => {
+              if (u && typeof u === 'string') {
+                window.postMessage({ type: '__CANVA_OPEN_URL__', url: u }, '*');
+              }
+            };
+            const proxy = {
+              set location(val) {
+                notify(typeof val === 'string' ? val : (val && val.href));
+              },
+              get location() {
+                return {
+                  set href(val) { notify(val); },
+                  assign(val) { notify(val); },
+                  replace(val) { notify(val); },
+                };
+              },
+              focus() {},
+              blur() {},
+              close() {},
+              closed: false,
+              document: window.document,
+            };
+            return proxy;
+          }
+          return win;
+        };
       },
     });
   } catch (_) {}
