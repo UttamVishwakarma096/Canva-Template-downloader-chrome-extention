@@ -20,8 +20,30 @@ self.CANVA_SELECTORS = {
   pptxSelected: /pptx|powerpoint/i,
   finalDownload: ['Download'],
 
-  // Signs that something needs you. Lower case.
-  proSigns: ['upgrade to canva pro', 'try canva pro', 'get canva pro', 'start your free pro trial'],
+  // Signs that something needs you or is Pro/Premium. Lower case.
+  proSigns: [
+    'upgrade to canva pro',
+    'try canva pro',
+    'get canva pro',
+    'start your free pro trial',
+    'start free pro trial',
+    'try pro free',
+    'try it free for 30 days',
+    'unlock this template',
+    'unlock with canva pro',
+    'included with canva pro',
+    'canva pro template',
+    'premium template',
+    'pay and download',
+    'buy this template',
+    'contains premium elements',
+    'contains paid elements',
+    'premium content',
+    'premium images',
+    'remove watermarks',
+    'switch to canva pro',
+    'go pro',
+  ],
   captchaSigns: ['verify you are human', 'are you a robot', 'security check'],
   slowDownSigns: ['too many requests', 'slow down'],
 

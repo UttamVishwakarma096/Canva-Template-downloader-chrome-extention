@@ -206,6 +206,22 @@
       return words.some((w) => text.includes(w));
     });
 
+  function isPro() {
+    if (dialogHas(S.proSigns)) return true;
+
+    // Check for Pro/Premium badges or banners visible on the page
+    const elements = [...document.querySelectorAll('[role="dialog"], [role="alert"], [aria-label], button, a, h1, h2, h3, h4, p, span, div')].filter(visible);
+    return elements.some((el) => {
+      const aria = norm(el.getAttribute('aria-label') || '');
+      const title = norm(el.getAttribute('title') || '');
+      const text = norm(el.textContent || '');
+      if (S.proSigns.some((w) => aria === w || title === w || text === w)) return true;
+      if (text.length < 100 && S.proSigns.some((w) => text.includes(w))) return true;
+      if ((aria.includes('crown') || aria.includes('pro badge') || aria.includes('canva pro')) && (text.includes('pro') || text.includes('trial') || text.includes('upgrade'))) return true;
+      return false;
+    });
+  }
+
   const send = (msg) => chrome.runtime.sendMessage(msg).catch(() => {});
 
   const pageHas = (words) => {
@@ -226,7 +242,7 @@
     const notFound = (what) => {
       const p = problem();
       if (p) return result(...p);
-      if (dialogHas(S.proSigns)) return result('skip', 'Needs Canva Pro');
+      if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
       const seen = [
         ...new Set(
           [...document.querySelectorAll(S.clickable)].filter(visible).map(labelOf).filter(Boolean)
@@ -244,25 +260,38 @@
 
     const p = problem();
     if (p) return result(...p);
+    if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
 
     // ── Step 1: Open template / editor ──────────────────────────────────────
     const waitForEditor = () =>
       new Promise((resolve) => {
         const t0 = Date.now();
         const timer = setInterval(() => {
-          if (S.editorPath.test(location.pathname)) resolve(true);
-          else if (Date.now() - t0 > S.editorLoadSec * 1000) resolve(false);
-          else return;
-          clearInterval(timer);
+          if (isPro()) {
+            clearInterval(timer);
+            resolve('pro');
+          } else if (S.editorPath.test(location.pathname)) {
+            clearInterval(timer);
+            resolve(true);
+          } else if (Date.now() - t0 > S.editorLoadSec * 1000) {
+            clearInterval(timer);
+            resolve(false);
+          }
         }, 500);
       });
 
     if (afterUse && !S.editorPath.test(location.pathname)) {
-      if (!(await waitForEditor())) return notFound('the editor');
+      const ed = await waitForEditor();
+      if (ed === 'pro' || isPro()) return result('skip', 'Needs Canva Pro / Premium template');
+      if (!ed) return notFound('the editor');
       await step('editor-opened');
     } else if (!S.editorPath.test(location.pathname)) {
+      if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
       const use = await waitFor(() => findByText(S.useTemplate), T * 2);
-      if (!use) return notFound(S.useTemplate[0]);
+      if (!use) {
+        if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
+        return notFound(S.useTemplate[0]);
+      }
 
       await step('use-template');
       const anchor = use.tagName === 'A' ? use : use.closest('a');
@@ -273,7 +302,9 @@
         press(use);
       }
 
-      if (!(await waitForEditor())) return notFound('the editor');
+      const ed = await waitForEditor();
+      if (ed === 'pro' || isPro()) return result('skip', 'Needs Canva Pro / Premium template');
+      if (!ed) return notFound('the editor');
       await step('editor-opened');
     }
 
@@ -345,13 +376,13 @@
     await step('download-clicked');
     press(finalButton);
 
-    const proImmediate = await waitFor(() => (dialogHas(S.proSigns) ? true : null), 3);
-    if (proImmediate) return result('skip', 'Needs Canva Pro');
+    const proImmediate = await waitFor(() => (isPro() ? true : null), 3);
+    if (proImmediate) return result('skip', 'Needs Canva Pro / Premium template');
 
     // Keep watchdog refreshed while Canva compiles the PPTX on its servers
     for (let i = 0; i < 25; i++) {
       await sleep(3000);
-      if (dialogHas(S.proSigns)) return result('skip', 'Needs Canva Pro');
+      if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
       await step('download-clicked');
 
       const btn = findFinalDownload();
