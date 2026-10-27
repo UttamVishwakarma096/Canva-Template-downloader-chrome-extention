@@ -63,7 +63,7 @@ self.CANVA_SELECTORS = {
 
   // Page addresses.
   loginPath: /^\/(login|signup)\b/,
-  editorPath: /^\/design\/[^/?#]+(\/[^/?#]+)?\/edit/,
+  editorPath: /^\/design\b/,
   templatePath: /^\/templates\/EA[A-Za-z0-9_-]{6,}/,
   // A template id looks like EAFhHM4bhZE. Links may be /templates/EAF.../,
   // a translated path like /es_es/plantillas/EAF.../, or ?template=EAF...

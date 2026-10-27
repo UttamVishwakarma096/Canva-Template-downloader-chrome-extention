@@ -41,8 +41,11 @@
       bubbles: true,
       cancelable: true,
       composed: true,
+      view: window,
       clientX: r.left + r.width / 2,
       clientY: r.top + r.height / 2,
+      screenX: (window.screenX || 0) + r.left + r.width / 2,
+      screenY: (window.screenY || 0) + r.top + r.height / 2,
       button: 0,
       buttons: 1,
       pointerType: 'mouse',
@@ -311,22 +314,22 @@
       if (href && href.includes('/design/')) {
         send({ type: 'NAVIGATE_JOB', jobId, url: href });
       } else {
-        press(use);
         const inner = use.querySelector('span, div, p');
         if (inner && inner !== use) press(inner);
+        press(use);
+        if (anchor && anchor !== use) press(anchor);
       }
 
       // Check if clicking triggered an upgrade paywall dialog
       const proHit = await waitFor(() => (hasProDialog() || findProTemplateCta() ? true : null), 3);
       if (proHit) return result('skip', 'Needs Canva Pro / Premium template');
 
-      // If the editor opens in the same tab, wait briefly for navigation
-      const inSameTab = await waitFor(() => (S.editorPath.test(location.pathname) ? true : null), 6);
+      // Wait for navigation to the editor (either in this tab via NAVIGATE_JOB or new tab)
+      const inSameTab = await waitFor(() => (S.editorPath.test(location.pathname) ? true : null), 8);
       if (inSameTab) {
         await step('editor-opened');
       } else {
-        // Canva is opening the editor in a new tab. The background worker will
-        // follow the new tab and close this template tab. Wait quietly.
+        // If Canva opened in a new tab, wait quietly while background worker switches tabs
         await sleep(30000);
         return;
       }
@@ -429,6 +432,12 @@
       }
     }
   }
+
+  window.addEventListener('message', (ev) => {
+    if (ev.data && ev.data.type === '__CANVA_OPEN_URL__' && ev.data.url && runningJob) {
+      send({ type: 'NAVIGATE_JOB', jobId: runningJob, url: ev.data.url });
+    }
+  });
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (!msg || msg.type !== 'RUN' || msg.jobId === runningJob) return;

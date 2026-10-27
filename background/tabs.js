@@ -51,7 +51,7 @@ export async function openJobTab(job) {
 // The runner is not in the manifest: it only goes into tabs the extension opened.
 // afterUse: "Use this template" was already clicked; only the editor steps are left.
 export async function injectRunner(tabId, jobId, afterUse) {
-  // Disarm focus stealing: prevent Canva from stealing window focus
+  // Disarm focus stealing and intercept window.open to forward editor URLs
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
@@ -60,6 +60,45 @@ export async function injectRunner(tabId, jobId, afterUse) {
         if (window.__canvaBulkInterceptorInstalled) return;
         window.__canvaBulkInterceptorInstalled = true;
         window.focus = function () {};
+
+        const notify = (url) => {
+          if (url && typeof url === 'string' && url !== 'about:blank' && url !== '') {
+            window.postMessage({ type: '__CANVA_OPEN_URL__', url: String(url) }, '*');
+          }
+        };
+
+        const origOpen = window.open;
+        window.open = function (url, target, features) {
+          if (url) notify(url);
+
+          let _url = typeof url === 'string' ? url : '';
+          const proxy = {
+            get location() {
+              return {
+                set href(val) { _url = val; notify(val); },
+                get href() { return _url; },
+                assign(val) { _url = val; notify(val); },
+                replace(val) { _url = val; notify(val); },
+                toString() { return _url; },
+              };
+            },
+            set location(val) {
+              const u = typeof val === 'string' ? val : (val && val.href);
+              _url = u;
+              notify(u);
+            },
+            focus() {},
+            blur() {},
+            close() {},
+            closed: false,
+            document: {
+              write() {},
+              close() {},
+              open() {},
+            },
+          };
+          return proxy;
+        };
       },
     });
   } catch (_) {}
