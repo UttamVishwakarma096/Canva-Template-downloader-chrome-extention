@@ -110,7 +110,8 @@ self.CANVA_SELECTORS = {
   templateIdInPath: /\/(EA[A-Za-z0-9_-]{6,})\/?$/,
   templateIdInQuery: ['template', 'templateId'],
   // The box around one template picture on the search page (/s/templates).
-  cardSelector: '[role="group"][aria-label^="Preview"], [role="group"]',
+  cardSelector:
+    '[role="group"][aria-label^="Preview"], [role="group"], article, [data-testid*="template" i], [data-testid*="card" i], [data-testid*="search-result" i], li[role="listitem"]',
 
   // Seconds to wait for one button before giving up.
   stepTimeoutSec: 15,

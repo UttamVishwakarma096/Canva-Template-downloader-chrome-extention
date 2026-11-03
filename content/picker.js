@@ -35,46 +35,129 @@
     return t.replace(/^Preview,\s*/, '').replace(/\s+/g, ' ').trim().slice(0, 120);
   }
 
-  // Detects if a card element on Canva has Canva Pro / Premium indicators
-  function isCardPremium(card) {
-    if (!card) return false;
-    const aria = (card.getAttribute('aria-label') || '').toLowerCase();
-    if (/\b(pro|premium|crown)\b/.test(aria)) return true;
+  // Finds the outer template card container for any element (checkbox, link, or image)
+  function getCardContainer(el) {
+    if (!el) return null;
+    const match = el.closest && el.closest(S.cardSelector);
+    if (match && match !== document.body && match !== document.documentElement) {
+      return match;
+    }
+    let cur = el;
+    let best = el;
+    for (let i = 0; cur && i < 8; i++) {
+      cur = cur.parentElement;
+      if (!cur || cur === document.body) break;
+      const role = (cur.getAttribute('role') || '').toLowerCase();
+      const testid = (cur.getAttribute('data-testid') || '').toLowerCase();
+      if (role === 'group' || role === 'article' || role === 'listitem' || /card|template|result/i.test(testid)) {
+        return cur;
+      }
+      const r = cur.getBoundingClientRect();
+      if (r.width >= 100 && r.width <= 700 && r.height >= 80 && r.height <= 950) {
+        best = cur;
+      }
+    }
+    return best;
+  }
 
-    const badges = card.querySelectorAll(
-      '[aria-label*="pro" i], [aria-label*="crown" i], [title*="pro" i], [title*="crown" i], [data-icon*="crown" i], [data-testid*="pro" i], [data-testid*="crown" i], svg'
+  // Checks script tags for license info near a template ID
+  function isProInPageData(templateId) {
+    if (!templateId) return false;
+    const id = templateId.trim();
+    const regex = new RegExp(
+      `"${id}"[\\s\\S]{0,500}"(canva_pro|paid|canva:paid|canva:pro|pro)"|"(canva_pro|paid|canva:paid|canva:pro|pro)"[\\s\\S]{0,500}"${id}"|"id"\\s*:\\s*"${id}"[\\s\\S]{0,500}"(is_pro|isPro)"\\s*:\\s*true`
     );
-    for (const b of badges) {
-      const bAria = (b.getAttribute('aria-label') || '').toLowerCase();
-      const bTitle = (b.getAttribute('title') || '').toLowerCase();
-      const bClass = (typeof b.className === 'string' ? b.className : '').toLowerCase();
-      const bTestId = (b.getAttribute('data-testid') || '').toLowerCase();
-      const bIcon = (b.getAttribute('data-icon') || '').toLowerCase();
-      if (/\b(pro|crown|premium)\b/.test(bAria) || /\b(pro|crown|premium)\b/.test(bTitle)) return true;
-      if (bClass.includes('crown') || bClass.includes('probadge') || bClass.includes('pro-badge')) return true;
-      if (bTestId.includes('crown') || bTestId.includes('pro')) return true;
-      if (bIcon.includes('crown')) return true;
+    for (const s of document.querySelectorAll('script')) {
+      if (s.textContent && regex.test(s.textContent)) return true;
+    }
+    return false;
+  }
 
-      if (b.tagName && b.tagName.toLowerCase() === 'svg') {
-        const paths = b.querySelectorAll('path');
-        for (const p of paths) {
-          const id = (p.getAttribute('id') || '').toLowerCase();
-          const cls = (p.getAttribute('class') || '').toLowerCase();
-          if (id.includes('crown') || cls.includes('crown')) return true;
-        }
+  // Detects if a card element on Canva has Canva Pro / Premium indicators
+  function isCardPremium(card, url) {
+    if (!card) return false;
+
+    // 1. Check template ID against embedded JSON state in script tags
+    const mId = (url || '').match(/\/(EA[A-Za-z0-9_-]{6,})/);
+    const tId = mId ? mId[1] : '';
+    if (tId && isProInPageData(tId)) return true;
+
+    // Helper to test attributes for pro/crown terms
+    const checkAttr = (val) => {
+      if (!val || typeof val !== 'string') return false;
+      const v = val.toLowerCase();
+      return /\b(pro|premium|crown)\b/.test(v) || v.includes('canva pro') || v.includes('crown');
+    };
+
+    // 2. Check card container and parent wrapper
+    const root = getCardContainer(card) || card;
+    if (checkAttr(root.getAttribute('aria-label')) || checkAttr(root.getAttribute('title'))) return true;
+
+    // 3. Check all elements inside the card with identifying attributes
+    const tagged = root.querySelectorAll('[aria-label], [title], [data-icon], [data-testid], [data-tooltip]');
+    for (const el of tagged) {
+      if (
+        checkAttr(el.getAttribute('aria-label')) ||
+        checkAttr(el.getAttribute('title')) ||
+        checkAttr(el.getAttribute('data-icon')) ||
+        checkAttr(el.getAttribute('data-testid')) ||
+        checkAttr(el.getAttribute('data-tooltip'))
+      ) {
+        return true;
       }
     }
 
-    const textEls = card.querySelectorAll('span, div, p, b, strong, em');
-    for (const el of textEls) {
-      if (el.children.length === 0) {
-        const txt = (el.textContent || '').trim();
-        if (txt === 'Pro' || txt === 'PRO') {
-          const r = el.getBoundingClientRect();
-          if (r.width > 0 && r.width < 120 && r.height > 0 && r.height < 60) return true;
+    // 4. Check SVGs and their paths/classes/colors
+    for (const svg of root.querySelectorAll('svg')) {
+      if (checkAttr(svg.getAttribute('aria-label')) || checkAttr(svg.getAttribute('title'))) return true;
+      const sCls = (typeof svg.className === 'string' ? svg.className : '').toLowerCase();
+      if (sCls.includes('crown') || sCls.includes('pro')) return true;
+
+      if (svg.parentElement && (checkAttr(svg.parentElement.getAttribute('aria-label')) || checkAttr(svg.parentElement.getAttribute('title')))) {
+        return true;
+      }
+
+      for (const p of svg.querySelectorAll('path, use, polygon, g')) {
+        const pId = (p.getAttribute('id') || '').toLowerCase();
+        const pCls = (p.getAttribute('class') || '').toLowerCase();
+        const pHref = (p.getAttribute('href') || p.getAttribute('xlink:href') || '').toLowerCase();
+        if (pId.includes('crown') || pCls.includes('crown') || pHref.includes('crown')) return true;
+      }
+
+      // Check for Canva's gold/yellow/amber crown icon color
+      try {
+        const style = getComputedStyle(svg);
+        const color = (style.fill || style.color || '').toLowerCase();
+        const r = svg.getBoundingClientRect();
+        if (r.width >= 8 && r.width <= 36 && r.height >= 8 && r.height <= 36) {
+          const mRgb = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+          if (mRgb) {
+            const red = parseInt(mRgb[1], 10);
+            const green = parseInt(mRgb[2], 10);
+            const blue = parseInt(mRgb[3], 10);
+            if (red >= 180 && green >= 110 && blue <= 90) return true;
+          }
         }
+      } catch (_) {}
+    }
+
+    // 5. Check visible text badges (e.g. pill with "Pro" or "PRO")
+    for (const el of root.querySelectorAll('span, div, p, b, strong, em, button')) {
+      const txt = (el.textContent || '').trim();
+      if (txt === 'Pro' || txt === 'PRO' || txt === 'Canva Pro' || txt === '👑 Pro' || txt === '👑 PRO') {
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.width < 140 && r.height > 0 && r.height < 60) return true;
       }
     }
+
+    // 6. Check parent container if root is slightly nested
+    if (root.parentElement && root.parentElement !== document.body) {
+      const parent = root.parentElement;
+      for (const el of parent.querySelectorAll('[aria-label*="pro" i], [aria-label*="crown" i], [title*="pro" i], [title*="crown" i], [data-icon*="crown" i]')) {
+        return true;
+      }
+    }
+
     return false;
   }
 
@@ -82,18 +165,9 @@
   function isSinglePagePremium() {
     const m = location.pathname.match(/\/(EA[A-Za-z0-9_-]{6,})/);
     const templateId = m ? m[1] : '';
-    if (templateId) {
-      const regex = new RegExp(
-        `"${templateId}"[\\s\\S]{0,350}"DL"\\s*:\\s*"(canva_pro|paid|canva:paid|canva:pro)"|"DL"\\s*:\\s*"(canva_pro|paid|canva:paid|canva:pro)"[\\s\\S]{0,350}"${templateId}"`
-      );
-      for (const s of document.querySelectorAll('script')) {
-        if (s.textContent && regex.test(s.textContent)) return true;
-      }
-      if (regex.test(document.documentElement.innerHTML.slice(0, 600000))) return true;
-    }
-
+    if (templateId && isProInPageData(templateId)) return true;
     const main = document.querySelector('main, [role="main"], [role="dialog"]') || document.body;
-    return isCardPremium(main);
+    return isCardPremium(main, location.href);
   }
 
   // ---------- checkboxes on cards ----------
@@ -102,8 +176,11 @@
   function decorate(card, url) {
     if (card.dataset.cbqDone) return;
     card.dataset.cbqDone = '1';
-    const isPrem = isCardPremium(card);
+
+    const cardContainer = getCardContainer(card) || card;
+    const isPrem = isCardPremium(cardContainer, url);
     card.dataset.cbqPremium = isPrem ? '1' : '0';
+    if (cardContainer !== card) cardContainer.dataset.cbqPremium = isPrem ? '1' : '0';
 
     const host = card.tagName === 'A' ? card.parentElement || card : card;
     if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
@@ -119,7 +196,8 @@
       box.addEventListener(ev, (e) => e.stopPropagation(), true);
     }
     box.addEventListener('change', () => {
-      if (box.checked) ticked.set(url, { title: titleOf(card), isPremium: isPrem });
+      const livePrem = box.dataset.premium === '1' || isCardPremium(getCardContainer(box), url);
+      if (box.checked) ticked.set(url, { title: titleOf(cardContainer), isPremium: livePrem });
       else ticked.delete(url);
       render();
     });
@@ -195,10 +273,13 @@
       }
       return path.join('\n  ');
     });
+    const boxes = document.querySelectorAll('.cbq-box');
+    const premCount = [...boxes].filter((b) => b.dataset.premium === '1' || isCardPremium(getCardContainer(b), b.dataset.url)).length;
     return [
       `Extension version: ${chrome.runtime.getManifest().version}`,
       `Page: ${location.href}`,
-      `Checkboxes: ${document.querySelectorAll('.cbq-box').length}`,
+      `Checkboxes: ${boxes.length}`,
+      `Premium detected: ${premCount}`,
       `Links: ${links.length}, template links: ${links.filter((h) => templateUrl(h)).length}`,
       `Big pictures: ${bigImgs.length}`,
       `Links with "template": ${links.filter((h) => /templat/i.test(h)).slice(0, 15).join(' | ')}`,
@@ -265,44 +346,61 @@
       send([{ url: location.href, title: (h1 && h1.textContent.trim()) || document.title, isPremium: isPrem }]);
     } else if (act === 'premium') {
       let count = 0;
-      document.querySelectorAll('.cbq-box').forEach((b) => {
-        const card = b.closest(S.cardSelector) || b.parentElement;
-        const isPrem = b.dataset.premium === '1' || isCardPremium(card);
+      const allBoxes = document.querySelectorAll('.cbq-box');
+      allBoxes.forEach((b) => {
+        const url = b.dataset.url;
+        const cardContainer = getCardContainer(b) || b.parentElement;
+        const isPrem = isCardPremium(cardContainer, url);
         if (isPrem) {
           b.checked = true;
           b.dataset.premium = '1';
-          ticked.set(b.dataset.url, { title: titleOf(card), isPremium: true });
+          b.classList.add('cbq-box-pro');
+          b.title = '⭐ Canva Pro template';
+          ticked.set(url, { title: titleOf(cardContainer), isPremium: true });
           count++;
         } else {
           b.checked = false;
-          ticked.delete(b.dataset.url);
+          b.dataset.premium = '0';
+          b.classList.remove('cbq-box-pro');
+          ticked.delete(url);
         }
       });
       render();
-      say(`Ticked ${count} premium template(s).`);
+      if (count > 0) {
+        say(`Ticked ${count} premium template(s) of ${allBoxes.length}.`);
+      } else {
+        say(`No premium templates detected out of ${allBoxes.length} templates on this page.`);
+      }
     } else if (act === 'all') {
       chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }).then((st) => {
         const onlyPrem = Boolean(st && st.onlyPremium);
         let count = 0;
         document.querySelectorAll('.cbq-box').forEach((b) => {
-          const card = b.closest(S.cardSelector) || b.parentElement;
-          const isPrem = b.dataset.premium === '1' || isCardPremium(card);
+          const url = b.dataset.url;
+          const cardContainer = getCardContainer(b) || b.parentElement;
+          const isPrem = isCardPremium(cardContainer, url);
           if (!onlyPrem || isPrem) {
             b.checked = true;
-            ticked.set(b.dataset.url, { title: titleOf(card), isPremium: isPrem });
+            if (isPrem) {
+              b.dataset.premium = '1';
+              b.classList.add('cbq-box-pro');
+            }
+            ticked.set(url, { title: titleOf(cardContainer), isPremium: isPrem });
             count++;
           } else {
             b.checked = false;
-            ticked.delete(b.dataset.url);
+            ticked.delete(url);
           }
         });
         render();
         say(onlyPrem ? `Ticked ${count} premium templates (Premium-only mode).` : `Ticked ${count} templates.`);
       }).catch(() => {
         document.querySelectorAll('.cbq-box').forEach((b) => {
+          const url = b.dataset.url;
+          const cardContainer = getCardContainer(b) || b.parentElement;
+          const isPrem = isCardPremium(cardContainer, url);
           b.checked = true;
-          const card = b.closest(S.cardSelector) || b.parentElement;
-          ticked.set(b.dataset.url, { title: titleOf(card), isPremium: b.dataset.premium === '1' });
+          ticked.set(url, { title: titleOf(cardContainer), isPremium: isPrem });
         });
         render();
       });
