@@ -41,14 +41,21 @@ document.getElementById('file').addEventListener('change', async (e) => {
 const emptyBtn = document.getElementById('empty-queue-btn');
 if (emptyBtn) {
   emptyBtn.addEventListener('click', async () => {
-    const res = await chrome.runtime.sendMessage({ type: 'EMPTY_QUEUE' });
-    const count = res && res.count != null ? res.count : 0;
-    const msg = document.getElementById('empty-msg');
-    if (msg) {
-      msg.textContent = `Queue emptied (${count} template(s) removed).`;
-      setTimeout(() => {
-        msg.textContent = '';
-      }, 4000);
+    emptyBtn.disabled = true;
+    try {
+      const res = await chrome.runtime.sendMessage({ type: 'EMPTY_QUEUE' });
+      const count = res && res.count != null ? res.count : 0;
+      const msg = document.getElementById('empty-msg');
+      if (msg) {
+        msg.textContent = `Queue emptied (${count} template(s) removed).`;
+        setTimeout(() => {
+          msg.textContent = '';
+        }, 4000);
+      }
+    } catch (err) {
+      console.error('Failed to empty queue:', err);
+    } finally {
+      emptyBtn.disabled = false;
     }
   });
 }

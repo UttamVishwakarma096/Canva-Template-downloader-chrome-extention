@@ -72,7 +72,10 @@
       <p id="add-msg" class="muted"></p>
     </details>
 
-    <h2>Active Queue</h2>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin: 14px 0 6px;">
+      <h2 style="margin: 0;">Active Queue</h2>
+      <button id="empty-queue-sub" class="danger" style="padding: 2px 8px; font-size: 11px; cursor: pointer;">Empty queue</button>
+    </div>
     <ul id="list"></ul>
 
     <script src="popup.js" type="module"></script>

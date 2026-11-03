@@ -2,8 +2,9 @@
 // Listeners are added at the top level so Chrome can wake the worker for them.
 import { update, read, settings, activeJob } from './store.js';
 import { tick, finishJob, start, pause, restore, watchdog } from './pacer.js';
-import { injectRunner, closeTab } from './tabs.js';
+import { injectRunner, closeTab, closeJobTabs, closeWorkerWindow } from './tabs.js';
 import { onCreated, onChanged, onDeterminingFilename, maybeBuildZip } from './downloads.js';
+import { keepAwake } from './notify.js';
 import { countFiles } from '../lib/fileStore.js';
 import { WORK_SEC_PER_JOB } from '../config.js';
 
@@ -303,17 +304,28 @@ const handlers = {
     update((d) => {
       d.queue = d.queue.filter((j) => !['done', 'skipped'].includes(j.state));
     }),
-  EMPTY_QUEUE: () =>
-    update((d) => {
-      const initialCount = d.queue.length;
-      d.queue = d.queue.filter((j) => j.id === d.state.activeJobId);
-      if (!d.state.activeJobId) {
-        d.state.running = false;
-        d.state.paused = false;
-        d.state.reason = null;
-      }
-      return { count: initialCount - d.queue.length };
-    }),
+  EMPTY_QUEUE: async () => {
+    chrome.alarms.clear('tick');
+    let jobToClose = null;
+    let count = 0;
+    await update((d) => {
+      count = d.queue.length + (d.premiumQueue ? d.premiumQueue.length : 0);
+      jobToClose = activeJob(d);
+      d.queue = [];
+      d.premiumQueue = [];
+      d.state.running = false;
+      d.state.paused = false;
+      d.state.reason = null;
+      d.state.activeJobId = null;
+      d.state.nextAt = 0;
+    });
+    if (jobToClose) {
+      await closeJobTabs(jobToClose).catch(() => {});
+    }
+    await closeWorkerWindow().catch(() => {});
+    keepAwake(false);
+    return { ok: true, count };
+  },
   GET_SETTINGS: async () => settings(),
   SET_SETTING: async (m) => {
     const s = await settings();

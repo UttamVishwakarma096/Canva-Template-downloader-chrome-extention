@@ -135,12 +135,29 @@ $('format-select').onchange = (e) => send('SET_SETTING', { key: 'format', value:
 $('pro-account-check').onchange = (e) => send('SET_SETTING', { key: 'hasPremiumAccount', value: e.target.checked }).then(refresh);
 $('only-premium-check').onchange = (e) => send('SET_SETTING', { key: 'onlyPremium', value: e.target.checked }).then(refresh);
 
+async function doEmptyQueue() {
+  const btn = $('empty-queue');
+  const subBtn = $('empty-queue-sub');
+  if (btn) btn.disabled = true;
+  if (subBtn) subBtn.disabled = true;
+  try {
+    await send('EMPTY_QUEUE');
+  } catch (err) {
+    console.error('Failed to empty queue:', err);
+  } finally {
+    if (btn) btn.disabled = false;
+    if (subBtn) subBtn.disabled = false;
+    await refresh();
+  }
+}
+
 $('start').onclick = () => send('START').then(refresh);
 $('pause').onclick = () => send('PAUSE').then(refresh);
 $('zip').onclick = () => send('MAKE_ZIP').then(refresh);
 $('retry').onclick = () => send('RETRY_FAILED').then(refresh);
 $('clear').onclick = () => send('CLEAR_DONE').then(refresh);
-$('empty-queue').onclick = () => send('EMPTY_QUEUE').then(refresh);
+if ($('empty-queue')) $('empty-queue').onclick = doEmptyQueue;
+if ($('empty-queue-sub')) $('empty-queue-sub').onclick = doEmptyQueue;
 $('move-premium').onclick = async () => {
   const res = await send('MOVE_PREMIUM_TO_QUEUE');
   $('premium-msg').textContent = res && res.moved ? `Queued ${res.moved} premium template(s) for download.` : 'No new premium templates to queue.';
