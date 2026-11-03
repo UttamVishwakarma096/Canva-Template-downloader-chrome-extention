@@ -172,6 +172,7 @@ function normalize(item) {
 }
 
 async function addMany(items) {
+  const s = await settings();
   return update((d) => {
     const known = new Set(d.queue.map((j) => j.url));
     let added = 0;
@@ -182,11 +183,18 @@ async function addMany(items) {
         skipped++;
         continue;
       }
+      const isPrem = typeof it === 'object' && Boolean(it.isPremium);
+      // If onlyPremium filter is active and the item was marked non-premium:
+      if (s.onlyPremium && typeof it === 'object' && it.isPremium === false) {
+        skipped++;
+        continue;
+      }
       known.add(n.url);
       d.queue.push({
         id: `job_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
         url: n.url,
         title: n.title,
+        isPremium: isPrem,
         state: 'queued',
         step: null,
         attempts: 0,
@@ -224,7 +232,16 @@ async function status() {
   const recent = [...d.queue]
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 40)
-    .map(({ id, title, url, state, step, error, attempts }) => ({ id, title, url, state, step, error, attempts }));
+    .map(({ id, title, url, state, step, error, attempts, isPremium }) => ({
+      id,
+      title,
+      url,
+      state,
+      step,
+      error,
+      attempts,
+      isPremium: Boolean(isPremium),
+    }));
 
   // Auto-collect any already-skipped Pro templates from queue into premiumQueue
   const proKnown = new Set((d.premiumQueue || []).map((p) => p.url));
@@ -286,6 +303,77 @@ const handlers = {
     update((d) => {
       d.queue = d.queue.filter((j) => !['done', 'skipped'].includes(j.state));
     }),
+  EMPTY_QUEUE: () =>
+    update((d) => {
+      const initialCount = d.queue.length;
+      d.queue = d.queue.filter((j) => j.id === d.state.activeJobId);
+      if (!d.state.activeJobId) {
+        d.state.running = false;
+        d.state.paused = false;
+        d.state.reason = null;
+      }
+      return { count: initialCount - d.queue.length };
+    }),
+  GET_SETTINGS: async () => settings(),
+  SET_SETTING: async (m) => {
+    const s = await settings();
+    if (m && m.key !== undefined) {
+      s[m.key] = m.value;
+      await chrome.storage.local.set({ settings: s });
+    }
+    return { ok: true, settings: s };
+  },
+  FILTER_ONLY_PREMIUM: async () => {
+    const s = await settings();
+    s.onlyPremium = true;
+    s.hasPremiumAccount = true;
+    await chrome.storage.local.set({ settings: s });
+
+    return update((d) => {
+      let moved = 0;
+      if (d.premiumQueue && d.premiumQueue.length) {
+        for (const item of d.premiumQueue) {
+          const existing = d.queue.find((j) => j.url === item.url);
+          if (existing) {
+            if (existing.state !== 'done') {
+              Object.assign(existing, { state: 'queued', attempts: 0, error: null, isPremium: true, updatedAt: Date.now() });
+              moved++;
+            }
+          } else {
+            d.queue.push({
+              id: `job_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+              url: item.url,
+              title: item.title,
+              isPremium: true,
+              state: 'queued',
+              step: null,
+              attempts: 0,
+              tabId: null,
+              downloadId: null,
+              error: null,
+              addedAt: Date.now(),
+              updatedAt: Date.now(),
+            });
+            moved++;
+          }
+        }
+      }
+
+      // Filter out queued jobs that are explicitly marked non-premium
+      let removedFree = 0;
+      d.queue = d.queue.filter((j) => {
+        if (j.id === d.state.activeJobId) return true;
+        if (j.state !== 'queued') return true;
+        if (j.isPremium === false) {
+          removedFree++;
+          return false;
+        }
+        return true;
+      });
+
+      return { moved, removedFree, onlyPremium: true };
+    });
+  },
   MOVE_PREMIUM_TO_QUEUE: () =>
     update((d) => {
       if (!d.premiumQueue || !d.premiumQueue.length) return { moved: 0 };
@@ -294,7 +382,7 @@ const handlers = {
         const existing = d.queue.find((j) => j.url === item.url);
         if (existing) {
           if (existing.state !== 'done') {
-            Object.assign(existing, { state: 'queued', attempts: 0, error: null, updatedAt: Date.now() });
+            Object.assign(existing, { state: 'queued', attempts: 0, error: null, isPremium: true, updatedAt: Date.now() });
             moved++;
           }
         } else {
@@ -302,6 +390,7 @@ const handlers = {
             id: `job_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
             url: item.url,
             title: item.title,
+            isPremium: true,
             state: 'queued',
             step: null,
             attempts: 0,
@@ -322,12 +411,13 @@ const handlers = {
       if (!item) return;
       const existing = d.queue.find((j) => j.url === item.url);
       if (existing) {
-        Object.assign(existing, { state: 'queued', attempts: 0, error: null, updatedAt: Date.now() });
+        Object.assign(existing, { state: 'queued', attempts: 0, error: null, isPremium: true, updatedAt: Date.now() });
       } else {
         d.queue.push({
           id: `job_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
           url: item.url,
           title: item.title,
+          isPremium: true,
           state: 'queued',
           step: null,
           attempts: 0,

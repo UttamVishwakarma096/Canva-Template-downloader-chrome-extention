@@ -1,6 +1,6 @@
-# Canva Bulk PPTX Downloader (Chrome extension)
+# Canva Bulk PPTX & XLSX Downloader (Chrome extension)
 
-You pick Canva templates quickly while you browse. The extension then downloads them one by one as PPTX (PowerPoint), at a slow and steady pace, and packs them into ZIP files. It can run 24/7.
+You pick Canva templates quickly while you browse. The extension then downloads them one by one as PPTX (PowerPoint) or XLSX (Microsoft Excel spreadsheet), at a slow and steady pace, and packs them into ZIP files. It can run 24/7. Supports both Free accounts and Canva Pro/Premium accounts with dedicated premium-only filtering.
 
 Please read the "Read this first" part of the architecture document. Automatic clicking on Canva is against Canva's Terms of Use, so use this only for your own work, slowly, on your own account. Never share or sell the downloaded templates.
 
@@ -24,14 +24,20 @@ Canva changes its website often. The extension finds buttons by their words, and
 
 ## How to use
 
-1. Log in to Canva in Chrome.
-2. Build the queue:
-   - On template list and search pages, each template card has a checkbox. Tick the ones you want, or click **Tick all on this page**, then click **Add ticked**.
+1. Log in to Canva in Chrome (Free or Canva Pro account).
+2. Choose your preferences:
+   - Select your desired format: **PPTX** or **XLSX** in the popup or Settings.
+   - If using a Canva Pro account, check **Pro Account**.
+   - If you want to download only premium templates, check **⭐ Only Premium** or use the **⭐ Tick Premium only** button on Canva pages.
+3. Build the queue:
+   - On template list and search pages, each template card has a checkbox (Pro cards have gold indicators). Click **⭐ Tick Premium only** to select only Pro templates, or click **Tick all on this page**, then click **Add ticked**.
    - On a single template page, click **Add this template**.
    - Or paste links into the popup (**Paste template links**), one per line.
    - Or import a `.txt` or `.csv` file of links on the Settings page.
-3. Click the extension icon and press **Start**. You can close the popup.
-4. ZIP files are saved in `Downloads/Canva Templates/`, for example `Canva Templates 2026-10-22 part-1.zip`. A new ZIP is made every 50 templates and when the queue is finished. **Make ZIP now** packs the files collected so far.
+   - In the popup, use **Select Only Premium** to instantly filter your active queue to only premium templates.
+   - Click **Empty queue** in the popup or Settings at any time to clear the entire queue with one click.
+4. Click the extension icon and press **Start**. You can close the popup.
+5. ZIP files are saved in `Downloads/Canva Templates/`, for example `Canva Templates 2026-10-22 part-1.zip`. A new ZIP is made every 50 templates and when the queue is finished. **Make ZIP now** packs the files collected so far.
 
 ## Running 24/7
 
@@ -46,6 +52,9 @@ Open the popup and click **Settings**.
 
 | Setting | Default |
 | --- | --- |
+| Download format | PPTX (`pptx` or `xlsx`) |
+| Canva Pro account | Off (turn on when logged in with Canva Pro) |
+| Premium templates only | Off (turn on to queue/download only Pro templates) |
 | Folder in Downloads | Canva Templates |
 | Wait between templates | random 20 to 45 seconds |
 | Templates per hour | 40 |

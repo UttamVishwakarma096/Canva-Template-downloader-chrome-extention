@@ -7,14 +7,15 @@ import { safeName } from '../lib/zip.js';
 
 const isOurs = (item) => item.byExtensionId === chrome.runtime.id;
 
-function extensionFor(type, url) {
+function extensionFor(type, url, defaultExt = 'pptx') {
+  if (/spreadsheetml|excel/.test(type)) return 'xlsx';
   if (/presentationml|powerpoint/.test(type)) return 'pptx';
   if (/pdf/.test(type)) return 'pdf';
   if (/png/.test(type)) return 'png';
   if (/jpe?g/.test(type)) return 'jpg';
   if (/zip/.test(type)) return 'zip';
   const m = /\.([a-z0-9]{2,5})(?:\?|#|$)/i.exec(url || '');
-  return m ? m[1].toLowerCase() : 'pptx';
+  return m ? m[1].toLowerCase() : defaultExt;
 }
 
 // A new download started. If it belongs to the open job, collect it.
@@ -44,7 +45,8 @@ export async function onCreated(item) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
       if (!blob.size) throw new Error('empty file');
-      const ext = extensionFor(blob.type, item.filename || url);
+      const s = await settings();
+      const ext = extensionFor(blob.type, item.filename || url, s.format || 'pptx');
       await putFile({ jobId: job.id, name: `${safeName(job.title)}.${ext}`, blob, savedAt: Date.now() });
       await removeDownload(item.id);
       await finishJob(job.id, { ok: true });
@@ -93,7 +95,7 @@ export function onDeterminingFilename(item, suggest) {
     const job = activeJob(d);
     if (!job || job.downloadId !== item.id) return suggest();
     const s = await settings();
-    const ext = extensionFor(item.mime || '', item.filename || item.url);
+    const ext = extensionFor(item.mime || '', item.filename || item.url, s.format || 'pptx');
     suggest({ filename: `${safeName(s.folder)}/not-in-zip/${safeName(job.title)}.${ext}`, conflictAction: 'uniquify' });
   })().catch(() => suggest());
   return true;

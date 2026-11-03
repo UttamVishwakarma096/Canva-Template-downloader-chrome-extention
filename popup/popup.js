@@ -16,6 +16,12 @@ function item(job) {
   const li = document.createElement('li');
   const t = document.createElement('span');
   t.className = 't';
+  if (job.isPremium) {
+    const badge = document.createElement('span');
+    badge.className = 'item-pro-badge';
+    badge.textContent = 'PRO';
+    t.append(badge);
+  }
   const name = document.createElement('a');
   name.className = 'name';
   name.textContent = job.title;
@@ -100,6 +106,10 @@ async function refresh() {
   $('n-done').textContent = s.counts.done;
   $('n-skipped').textContent = s.counts.skipped;
   $('n-failed').textContent = s.counts.failed;
+  $('format-select').value = s.settings.format || 'pptx';
+  $('pro-account-check').checked = Boolean(s.settings.hasPremiumAccount);
+  $('only-premium-check').checked = Boolean(s.settings.onlyPremium);
+
   const premCount = s.premiumQueue ? s.premiumQueue.length : 0;
   $('n-premium').textContent = premCount;
   $('premium-count').textContent = premCount;
@@ -121,14 +131,25 @@ async function refresh() {
   }
 }
 
+$('format-select').onchange = (e) => send('SET_SETTING', { key: 'format', value: e.target.value }).then(refresh);
+$('pro-account-check').onchange = (e) => send('SET_SETTING', { key: 'hasPremiumAccount', value: e.target.checked }).then(refresh);
+$('only-premium-check').onchange = (e) => send('SET_SETTING', { key: 'onlyPremium', value: e.target.checked }).then(refresh);
+
 $('start').onclick = () => send('START').then(refresh);
 $('pause').onclick = () => send('PAUSE').then(refresh);
 $('zip').onclick = () => send('MAKE_ZIP').then(refresh);
 $('retry').onclick = () => send('RETRY_FAILED').then(refresh);
 $('clear').onclick = () => send('CLEAR_DONE').then(refresh);
+$('empty-queue').onclick = () => send('EMPTY_QUEUE').then(refresh);
 $('move-premium').onclick = async () => {
   const res = await send('MOVE_PREMIUM_TO_QUEUE');
   $('premium-msg').textContent = res && res.moved ? `Queued ${res.moved} premium template(s) for download.` : 'No new premium templates to queue.';
+  setTimeout(() => { $('premium-msg').textContent = ''; }, 4000);
+  refresh();
+};
+$('filter-premium').onclick = async () => {
+  const res = await send('FILTER_ONLY_PREMIUM');
+  $('premium-msg').textContent = `Queue set to Premium Only! Moved ${res.moved || 0} premium templates, removed ${res.removedFree || 0} free templates.`;
   setTimeout(() => { $('premium-msg').textContent = ''; }, 4000);
   refresh();
 };

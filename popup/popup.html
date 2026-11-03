@@ -7,11 +7,29 @@
   </head>
   <body>
     <header>
-      <h1>Canva Bulk PPTX</h1>
+      <h1>Canva Bulk Downloader</h1>
       <span id="badge" class="badge">Stopped</span>
     </header>
 
     <p id="reason" class="reason" hidden></p>
+
+    <div class="quick-bar">
+      <div class="quick-row">
+        <label for="format-select"><b>Format:</b></label>
+        <select id="format-select">
+          <option value="pptx">PPTX (PowerPoint)</option>
+          <option value="xlsx">XLSX (Microsoft Excel)</option>
+        </select>
+      </div>
+      <div class="quick-row checks">
+        <label title="Enable downloading Canva Pro templates with your Pro account">
+          <input type="checkbox" id="pro-account-check" /> Pro Account
+        </label>
+        <label title="Only select and process premium templates in queue" class="gold-label">
+          <input type="checkbox" id="only-premium-check" /> ⭐ Only Premium
+        </label>
+      </div>
+    </div>
 
     <section class="numbers">
       <div><b id="n-queued">0</b><span>waiting</span></div>
@@ -29,6 +47,7 @@
       <button id="zip">Make ZIP now</button>
       <button id="retry">Retry failed</button>
       <button id="clear">Clear saved</button>
+      <button id="empty-queue" class="danger" title="Empty all templates from the active queue with one click">Empty queue</button>
       <button id="options">Settings</button>
       <button id="debug">Copy debug info</button>
     </div>
@@ -38,6 +57,7 @@
       <p class="muted" style="margin: 6px 0;">Templates requiring Canva Pro. Saved here for future download when using a Canva Pro account.</p>
       <div class="premium-actions">
         <button id="move-premium" class="main" title="Add all premium templates into the active download queue">Download with Pro</button>
+        <button id="filter-premium" title="Keep only premium templates in the active queue">Select Only Premium</button>
         <button id="copy-premium" title="Copy all premium template URLs to clipboard">Copy URLs</button>
         <button id="clear-premium" title="Clear premium queue">Clear</button>
       </div>

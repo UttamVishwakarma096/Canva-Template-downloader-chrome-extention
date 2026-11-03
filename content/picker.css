@@ -52,6 +52,22 @@
   color: #fff;
 }
 
+.cbq-box-pro {
+  accent-color: #b08800;
+  outline: 2px solid #e3c563;
+}
+
+.cbq-pro-btn {
+  background: #fffdf5 !important;
+  border-color: #e3c563 !important;
+  color: #8c6a00 !important;
+  font-weight: 600;
+}
+
+.cbq-pro-btn:hover {
+  background: #fdf5d6 !important;
+}
+
 .cbq-found {
   color: #57606a;
   font-size: 12px;

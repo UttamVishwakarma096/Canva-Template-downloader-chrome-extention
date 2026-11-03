@@ -2,13 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Canva Bulk PPTX Downloader: Settings</title>
+    <title>Canva Bulk Downloader: Settings</title>
     <style>
-      body { max-width: 560px; margin: 32px auto; padding: 0 16px; font: 14px/1.5 system-ui, sans-serif; color: #1f2328; }
+      body { max-width: 580px; margin: 32px auto; padding: 0 16px; font: 14px/1.5 system-ui, sans-serif; color: #1f2328; }
       h1 { font-size: 20px; }
       h2 { font-size: 15px; margin-top: 28px; }
-      label { display: grid; grid-template-columns: 1fr 140px; gap: 12px; align-items: center; margin: 10px 0; }
-      input[type='number'], input[type='text'] { padding: 5px 8px; font: inherit; }
+      label { display: grid; grid-template-columns: 1fr 200px; gap: 12px; align-items: center; margin: 10px 0; }
+      input[type='number'], input[type='text'], select { padding: 5px 8px; font: inherit; }
+      input[type='checkbox'] { width: 18px; height: 18px; justify-self: start; cursor: pointer; }
       .hint { color: #57606a; font-size: 12px; margin: -4px 0 8px; }
       button { padding: 7px 14px; border: 1px solid #7d2ae8; border-radius: 6px; background: #7d2ae8; color: #fff; font: inherit; cursor: pointer; }
       #msg, #import-msg { color: #1a7f37; margin-left: 10px; }
@@ -16,9 +17,19 @@
   </head>
   <body>
     <h1>Settings</h1>
-    <p class="hint">Every file is saved as PPTX (PowerPoint). Canva does not publish a website limit, so keep the numbers low.</p>
+    <p class="hint">Downloads Canva templates at a safe and steady pace, packed into ZIP files.</p>
 
     <form id="form">
+      <label>Download format
+        <select name="format">
+          <option value="pptx">PPTX (Microsoft PowerPoint)</option>
+          <option value="xlsx">XLSX (Microsoft Excel spreadsheet)</option>
+        </select>
+      </label>
+      <label>Canva Pro / Premium account <input type="checkbox" name="hasPremiumAccount" /></label>
+      <p class="hint">Check this if you are logged into Canva with a Canva Pro subscription. Allows downloading premium templates.</p>
+      <label>⭐ Premium templates only <input type="checkbox" name="onlyPremium" /></label>
+      <p class="hint">When enabled, only premium templates are selected and queued (free templates are ignored/skipped).</p>
       <label>Folder in Downloads <input type="text" name="folder" required /></label>
       <label>Shortest wait between templates (seconds) <input type="number" name="minWaitSec" min="5" max="600" required /></label>
       <label>Longest wait between templates (seconds) <input type="number" name="maxWaitSec" min="5" max="900" required /></label>
@@ -35,6 +46,11 @@
     <p class="hint">A .txt or .csv file with Canva template links. All links found in the file are added.</p>
     <input type="file" id="file" accept=".txt,.csv,text/plain,text/csv" />
     <span id="import-msg"></span>
+
+    <h2>Queue management</h2>
+    <p class="hint">Clear all templates from the active queue with one click.</p>
+    <button type="button" id="empty-queue-btn" style="background: #cf222e; border-color: #cf222e;">Empty active queue</button>
+    <span id="empty-msg" style="color: #cf222e; margin-left: 10px;"></span>
 
     <script src="options.js" type="module"></script>
   </body>

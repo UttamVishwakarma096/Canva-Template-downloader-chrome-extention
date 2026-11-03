@@ -2,7 +2,9 @@
 // Canva does not publish a limit for its website, so these are safe guesses.
 export const DEFAULTS = {
   folder: 'Canva Templates', // folder inside your Downloads folder
-  format: 'pptx', // fixed: every file is PowerPoint
+  format: 'pptx', // 'pptx' (PowerPoint) or 'xlsx' (Microsoft Excel)
+  hasPremiumAccount: false, // true if user is logged into a Canva Pro / Premium account
+  onlyPremium: false, // true to only select, queue and download premium templates
   minWaitSec: 20, // random wait between templates (lowest)
   maxWaitSec: 45, // random wait between templates (highest)
   perHour: 40, // templates per hour

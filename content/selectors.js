@@ -38,9 +38,20 @@ self.CANVA_SELECTORS = {
   share: ['Share'],
   download: ['Download'],
   fileTypeLabel: ['File type', 'File type:'], // aria-label or label of the file type menu
-  fileTypeValues: /^(png|jpg|jpeg|pdf|svg|mp4|gif|pptx|microsoft powerpoint)\b/i, // e.g. "PDF Suggested" // text shown on the menu
+  fileTypeValues: /^(png|jpg|jpeg|pdf|svg|mp4|gif|pptx|microsoft powerpoint|xlsx|microsoft excel|excel)\b/i, // e.g. "PDF Suggested" // text shown on the menu
   pptxOption: ['PPTX', 'Microsoft PowerPoint', 'PowerPoint', 'Microsoft PowerPoint Document'],
   pptxSelected: /pptx|powerpoint/i,
+  xlsxOption: [
+    'Microsoft Excel (.xlsx)',
+    'Microsoft Excel',
+    'XLSX',
+    'Excel',
+    'Microsoft Excel Document',
+    'Microsoft Excel Spreadsheet',
+    'Excel Document',
+    'Spreadsheet (.xlsx)',
+  ],
+  xlsxSelected: /xlsx|excel|microsoft excel/i,
   finalDownload: ['Download'],
 
   // Signs that something needs you or is Pro/Premium inside dialogs or panels. Lower case.

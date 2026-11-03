@@ -30,7 +30,7 @@ const emptyStats = () => ({
 
 export async function settings() {
   const { settings: s } = await chrome.storage.local.get('settings');
-  return { ...DEFAULTS, ...s, format: 'pptx' };
+  return { ...DEFAULTS, ...s };
 }
 
 export async function read() {

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Canva Bulk PPTX Downloader",
-  "version": "0.1.7",
-  "description": "Pick Canva templates fast, then download them one by one as PPTX and pack them into ZIP files.",
+  "name": "Canva Bulk PPTX & XLSX Downloader",
+  "version": "0.2.0",
+  "description": "Pick Canva templates fast, then download them one by one as PPTX or XLSX and pack them into ZIP files.",
   "minimum_chrome_version": "116",
   "permissions": [
     "storage",

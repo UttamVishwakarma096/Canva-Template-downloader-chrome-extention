@@ -93,8 +93,8 @@
       if (divBelow) return divBelow;
     }
 
-    // 3. Fallback: button whose text starts with any known file type (PDF, PNG, JPG, PPTX, etc.)
-    const typeRegex = /^(pdf|png|jpg|jpeg|svg|mp4|gif|pptx|microsoft powerpoint)\b/i;
+    // 3. Fallback: button whose text starts with any known file type (PDF, PNG, JPG, PPTX, XLSX, etc.)
+    const typeRegex = /^(pdf|png|jpg|jpeg|svg|mp4|gif|pptx|microsoft powerpoint|xlsx|microsoft excel|excel)\b/i;
     hit = buttons.find((b) => {
       const r = b.getBoundingClientRect();
       if (r.height < 25 || r.height > 80 || r.width < 100) return false;
@@ -107,11 +107,11 @@
     return hit || null;
   }
 
-  // ─── PPTX option inside the open file-type listbox ─────────────────────────
-  function findPptxOption(triggerEl) {
-    const want = S.pptxOption.map(norm);
+  // ─── Format option inside the open file-type listbox (PPTX or XLSX) ────────
+  function findFormatOption(triggerEl, format = 'pptx') {
+    const want = (format === 'xlsx' ? S.xlsxOption : S.pptxOption).map(norm);
 
-    // Filter elements that are visible and contain 'pptx' or 'powerpoint'
+    // Filter elements that are visible and contain the format words
     const matching = [...document.querySelectorAll('*')].filter((el) => {
       if (!visible(el)) return false;
       if (triggerEl && (triggerEl === el || triggerEl.contains(el))) return false;
@@ -148,29 +148,31 @@
   }
 
   // Clicks an option row and any inner text element to ensure full React event triggering
-  function clickOption(el) {
+  function clickOption(el, format = 'pptx') {
     if (!el) return;
     el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     press(el);
+    const regex = format === 'xlsx' ? /xlsx|excel/i : /pptx|powerpoint/i;
     const innerText = [...el.querySelectorAll('*')].find((c) => {
       const t = norm(c.textContent);
-      return t === 'pptx' || t.startsWith('pptx') || t.includes('powerpoint');
+      return regex.test(t);
     });
     if (innerText && innerText !== el) {
       press(innerText);
     }
   }
 
-  // ─── Purple Download button at the bottom of the panel ─────────────────────
-  function findFinalDownload() {
+  // ─── Download button at the bottom of the panel ───────────────────────────
+  function findFinalDownload(hasPremiumAccount = false) {
     const want = S.finalDownload.map(norm);
     const allButtons = [...document.querySelectorAll('button, [role="button"]')].filter(visible);
 
     const downloadButtons = allButtons.filter((b) => {
       const txt = norm(b.textContent);
       const aria = norm(b.getAttribute('aria-label') || '');
-      if (txt.includes('pay and download') || txt.includes('download with canva pro')) return false;
-      return want.includes(txt) || want.includes(aria);
+      if (txt.includes('pay and download')) return false;
+      if (!hasPremiumAccount && txt.includes('download with canva pro')) return false;
+      return want.includes(txt) || want.includes(aria) || (hasPremiumAccount && (txt.includes('download with canva pro') || aria.includes('download with canva pro')));
     });
 
     if (downloadButtons.length) {
@@ -179,7 +181,8 @@
 
     return allButtons.find((b) => {
       const txt = norm(b.textContent);
-      if (txt.includes('pay and download') || txt.includes('download with canva pro')) return false;
+      if (txt.includes('pay and download')) return false;
+      if (!hasPremiumAccount && txt.includes('download with canva pro')) return false;
       return txt.startsWith('download') && b.getBoundingClientRect().width > 100;
     }) || null;
   }
@@ -405,16 +408,33 @@
     });
   }
 
-  function isPro() {
+  // Checks if this template has Pro/Premium indicators in metadata or page markup
+  function isTemplatePro() {
     return (
       isProFromPageData() ||
       hasProBadge() ||
-      Boolean(findProTemplateCta()) ||
-      hasProDialog() ||
-      hasProText() ||
-      isPaywallVisible() ||
-      hasPremiumInDownloadPanel()
+      Boolean(findProTemplateCta())
     );
+  }
+
+  // Checks if download is blocked by a paywall
+  function isBlockedByPaywall(hasPremiumAccount = false) {
+    if (!hasPremiumAccount) {
+      return (
+        isTemplatePro() ||
+        hasProDialog() ||
+        hasProText() ||
+        isPaywallVisible() ||
+        hasPremiumInDownloadPanel()
+      );
+    }
+    // For users with Canva Pro account, Pro templates are allowed.
+    // Only block if an actual paywall dialog/overlay is actively showing.
+    return hasProDialog() || isPaywallVisible();
+  }
+
+  function isPro() {
+    return isBlockedByPaywall(false);
   }
 
   const send = (msg) => chrome.runtime.sendMessage(msg).catch(() => {});
@@ -431,13 +451,19 @@
     return null;
   }
 
-  async function run(jobId, afterUse) {
+  async function run(jobId, afterUse, opts = {}) {
+    const format = ((opts && opts.format) || 'pptx').toLowerCase();
+    const hasPremiumAccount = Boolean(opts && opts.hasPremiumAccount);
+    const onlyPremium = Boolean(opts && opts.onlyPremium);
+
     const step = (name) => send({ type: 'STEP', jobId, step: name });
     const result = (kind, error) => send({ type: 'RESULT', jobId, kind, error });
     const notFound = (what) => {
       const p = problem();
       if (p) return result(...p);
-      if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
+      if (isBlockedByPaywall(hasPremiumAccount)) {
+        return result('skip', hasPremiumAccount ? 'Paywall encountered on Pro account' : 'Needs Canva Pro / Premium template');
+      }
       const seen = [
         ...new Set(
           [...document.querySelectorAll(S.clickable)].filter(visible).map(labelOf).filter(Boolean)
@@ -456,21 +482,32 @@
     const p = problem();
     if (p) return result(...p);
 
+    // If onlyPremium mode is enabled, skip free templates!
+    if (onlyPremium && !isTemplatePro()) {
+      return result('skip', 'Skipped: Not a premium template (Premium-only mode enabled)');
+    }
+
     // ── Step 1: Open template / editor ──────────────────────────────────────
     if (S.editorPath.test(location.pathname)) {
       await step('editor-opened');
     } else {
-      // Instant detection: check if template is Pro in page metadata or markup
-      if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
+      // Check if blocked by paywall before clicking
+      if (isBlockedByPaywall(hasPremiumAccount)) {
+        return result('skip', hasPremiumAccount ? 'Paywall encountered on Pro account' : 'Needs Canva Pro / Premium template');
+      }
 
       const use = await waitFor(() => findByText(S.useTemplate), T * 2);
       if (!use) {
-        if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
+        if (isBlockedByPaywall(hasPremiumAccount)) {
+          return result('skip', hasPremiumAccount ? 'Paywall encountered on Pro account' : 'Needs Canva Pro / Premium template');
+        }
         return notFound(S.useTemplate[0]);
       }
 
       // Check again right before clicking
-      if (isPro() || isButtonPro(use)) return result('skip', 'Needs Canva Pro / Premium template');
+      if (isBlockedByPaywall(hasPremiumAccount) || (!hasPremiumAccount && isButtonPro(use))) {
+        return result('skip', hasPremiumAccount ? 'Paywall encountered on Pro account' : 'Needs Canva Pro / Premium template');
+      }
 
       await step('use-template');
       const anchor = use.tagName === 'A' ? use : use.closest('a');
@@ -487,7 +524,9 @@
       // Actively watch for paywall modal, Pro badges, or editor navigation
       for (let sec = 0; sec < 18; sec++) {
         await sleep(1000);
-        if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
+        if (isBlockedByPaywall(hasPremiumAccount)) {
+          return result('skip', hasPremiumAccount ? 'Paywall encountered on Pro account' : 'Needs Canva Pro / Premium template');
+        }
         if (S.editorPath.test(location.pathname)) {
           await step('editor-opened');
           break;
@@ -495,7 +534,9 @@
       }
 
       if (!S.editorPath.test(location.pathname)) {
-        if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
+        if (isBlockedByPaywall(hasPremiumAccount)) {
+          return result('skip', hasPremiumAccount ? 'Paywall encountered on Pro account' : 'Needs Canva Pro / Premium template');
+        }
 
         const status = await send({ type: 'GET_JOB_STATUS', jobId });
         if (status && status.switchedTab) {
@@ -503,11 +544,7 @@
           return;
         }
 
-        // We clicked "Customize this template" 18 seconds ago, but:
-        // - We did not navigate to /design
-        // - No new tab was created for /design
-        // This means the template is blocked (Canva Pro / Premium paywall)
-        return result('skip', 'Needs Canva Pro / Premium template');
+        return result('skip', hasPremiumAccount ? 'Could not open editor (timeout or paywall)' : 'Needs Canva Pro / Premium template');
       }
     }
 
@@ -524,81 +561,94 @@
     press(menuItem);
     await sleep(600);
 
-    // ── Step 3: Select Microsoft PowerPoint Document (.pptx) ────────────────
-    if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
+    // ── Step 3: Select Requested Format (PPTX or XLSX) ──────────────────────
+    if (isBlockedByPaywall(hasPremiumAccount)) {
+      return result('skip', hasPremiumAccount ? 'Paywall encountered on Pro account' : 'Needs Canva Pro / Premium template');
+    }
 
     let typeMenu = await waitFor(findFileTypeMenu, T);
     if (!typeMenu) {
-      if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
+      if (isBlockedByPaywall(hasPremiumAccount)) {
+        return result('skip', hasPremiumAccount ? 'Paywall encountered on Pro account' : 'Needs Canva Pro / Premium template');
+      }
       return notFound('File type dropdown');
     }
 
-    const isPptxSelected = () => {
+    const isFormatSelected = () => {
       const m = findFileTypeMenu();
       if (!m) return false;
       const t = norm(m.textContent);
       const aria = norm(m.getAttribute('aria-label') || '');
-      return S.pptxSelected.test(t) || S.pptxSelected.test(aria);
+      const regex = format === 'xlsx' ? S.xlsxSelected : S.pptxSelected;
+      return regex.test(t) || regex.test(aria);
     };
 
-    let selected = isPptxSelected();
+    let selected = isFormatSelected();
 
-    // Loop up to 6 rounds to ensure PPTX is genuinely selected
+    // Loop up to 6 rounds to ensure requested format is genuinely selected
     for (let round = 1; round <= 6 && !selected; round++) {
       typeMenu = findFileTypeMenu();
       if (!typeMenu) break;
 
-      // 1. If PPTX is not currently visible, open the dropdown
-      let option = findPptxOption(typeMenu);
+      // 1. If format is not currently visible, open the dropdown
+      let option = findFormatOption(typeMenu, format);
       if (!option) {
         press(typeMenu);
         await step('file-type-opened');
-        option = await waitFor(() => findPptxOption(typeMenu), 2.5);
+        option = await waitFor(() => findFormatOption(typeMenu, format), 2.5);
       }
 
-      // 2. Click the PPTX option
+      // 2. Click the format option
       if (option) {
-        clickOption(option);
+        clickOption(option, format);
         await sleep(600);
       }
 
-      // 3. Verify if dropdown button now reflects PPTX
-      await waitFor(() => (isPptxSelected() ? true : null), 2);
-      selected = isPptxSelected();
+      // 3. Verify if dropdown button now reflects requested format
+      await waitFor(() => (isFormatSelected() ? true : null), 2);
+      selected = isFormatSelected();
       if (selected) break;
       await sleep(400);
     }
 
-    // CRITICAL: Never proceed to download if PPTX was not selected!
+    const fmtLabel = format.toUpperCase();
     if (!selected) {
       const current = typeMenu ? norm(typeMenu.textContent) : 'unknown';
-      return result('retry', `Could not select PPTX in dropdown (current: "${current}"). Stopped to prevent downloading wrong format.`);
+      return result('retry', `Could not select ${fmtLabel} in dropdown (current: "${current}"). Stopped to prevent downloading wrong format.`);
     }
 
-    await step('pptx-selected');
+    await step(`${format}-selected`);
     await sleep(600);
 
-    // ── Step 4: Click the purple Download button ────────────────────────────
-    if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
+    // ── Step 4: Click the Download button ───────────────────────────────────
+    if (isBlockedByPaywall(hasPremiumAccount)) {
+      return result('skip', hasPremiumAccount ? 'Paywall encountered on Pro account' : 'Needs Canva Pro / Premium template');
+    }
 
-    const finalButton = await waitFor(findFinalDownload, T);
+    const finalButton = await waitFor(() => findFinalDownload(hasPremiumAccount), T);
     if (!finalButton) {
-      if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
+      if (isBlockedByPaywall(hasPremiumAccount)) {
+        return result('skip', hasPremiumAccount ? 'Paywall encountered on Pro account' : 'Needs Canva Pro / Premium template');
+      }
       return notFound('Download button');
     }
     await step('download-clicked');
     press(finalButton);
 
-    const proImmediate = await waitFor(() => (isPro() ? true : null), 4);
-    if (proImmediate) return result('skip', 'Needs Canva Pro / Premium template');
+    const paywallImmediate = await waitFor(() => (isBlockedByPaywall(hasPremiumAccount) ? true : null), 4);
+    if (paywallImmediate) {
+      return result('skip', hasPremiumAccount ? 'Paywall encountered on Pro account' : 'Needs Canva Pro / Premium template');
+    }
 
-    // Keep watchdog refreshed while Canva compiles the PPTX on its servers
+    // Keep watchdog refreshed while Canva compiles the file on its servers
     for (let i = 0; i < 25; i++) {
       await sleep(3000);
-      if (isPro()) return result('skip', 'Needs Canva Pro / Premium template');
+      if (isBlockedByPaywall(hasPremiumAccount)) {
+        return result('skip', hasPremiumAccount ? 'Paywall encountered on Pro account' : 'Needs Canva Pro / Premium template');
+      }
       await step('download-clicked');
 
-      const btn = findFinalDownload();
+      const btn = findFinalDownload(hasPremiumAccount);
       if (btn && !btn.disabled) {
         const body = norm(document.body.innerText).slice(0, 200000);
         const preparing = /preparing|generating|processing|creating your file|downloading/.test(body);
@@ -618,7 +668,11 @@
   chrome.runtime.onMessage.addListener((msg) => {
     if (!msg || msg.type !== 'RUN' || msg.jobId === runningJob) return;
     runningJob = msg.jobId;
-    run(msg.jobId, msg.afterUse).catch((e) =>
+    run(msg.jobId, msg.afterUse, {
+      format: msg.format,
+      hasPremiumAccount: msg.hasPremiumAccount,
+      onlyPremium: msg.onlyPremium,
+    }).catch((e) =>
       send({ type: 'RESULT', jobId: msg.jobId, kind: 'retry', error: `Runner error: ${e.message}` })
     );
   });

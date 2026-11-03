@@ -35,26 +35,91 @@
     return t.replace(/^Preview,\s*/, '').replace(/\s+/g, ' ').trim().slice(0, 120);
   }
 
+  // Detects if a card element on Canva has Canva Pro / Premium indicators
+  function isCardPremium(card) {
+    if (!card) return false;
+    const aria = (card.getAttribute('aria-label') || '').toLowerCase();
+    if (/\b(pro|premium|crown)\b/.test(aria)) return true;
+
+    const badges = card.querySelectorAll(
+      '[aria-label*="pro" i], [aria-label*="crown" i], [title*="pro" i], [title*="crown" i], [data-icon*="crown" i], [data-testid*="pro" i], [data-testid*="crown" i], svg'
+    );
+    for (const b of badges) {
+      const bAria = (b.getAttribute('aria-label') || '').toLowerCase();
+      const bTitle = (b.getAttribute('title') || '').toLowerCase();
+      const bClass = (typeof b.className === 'string' ? b.className : '').toLowerCase();
+      const bTestId = (b.getAttribute('data-testid') || '').toLowerCase();
+      const bIcon = (b.getAttribute('data-icon') || '').toLowerCase();
+      if (/\b(pro|crown|premium)\b/.test(bAria) || /\b(pro|crown|premium)\b/.test(bTitle)) return true;
+      if (bClass.includes('crown') || bClass.includes('probadge') || bClass.includes('pro-badge')) return true;
+      if (bTestId.includes('crown') || bTestId.includes('pro')) return true;
+      if (bIcon.includes('crown')) return true;
+
+      if (b.tagName && b.tagName.toLowerCase() === 'svg') {
+        const paths = b.querySelectorAll('path');
+        for (const p of paths) {
+          const id = (p.getAttribute('id') || '').toLowerCase();
+          const cls = (p.getAttribute('class') || '').toLowerCase();
+          if (id.includes('crown') || cls.includes('crown')) return true;
+        }
+      }
+    }
+
+    const textEls = card.querySelectorAll('span, div, p, b, strong, em');
+    for (const el of textEls) {
+      if (el.children.length === 0) {
+        const txt = (el.textContent || '').trim();
+        if (txt === 'Pro' || txt === 'PRO') {
+          const r = el.getBoundingClientRect();
+          if (r.width > 0 && r.width < 120 && r.height > 0 && r.height < 60) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // Detects if the current single template page is Canva Pro
+  function isSinglePagePremium() {
+    const m = location.pathname.match(/\/(EA[A-Za-z0-9_-]{6,})/);
+    const templateId = m ? m[1] : '';
+    if (templateId) {
+      const regex = new RegExp(
+        `"${templateId}"[\\s\\S]{0,350}"DL"\\s*:\\s*"(canva_pro|paid|canva:paid|canva:pro)"|"DL"\\s*:\\s*"(canva_pro|paid|canva:paid|canva:pro)"[\\s\\S]{0,350}"${templateId}"`
+      );
+      for (const s of document.querySelectorAll('script')) {
+        if (s.textContent && regex.test(s.textContent)) return true;
+      }
+      if (regex.test(document.documentElement.innerHTML.slice(0, 600000))) return true;
+    }
+
+    const main = document.querySelector('main, [role="main"], [role="dialog"]') || document.body;
+    return isCardPremium(main);
+  }
+
   // ---------- checkboxes on cards ----------
 
   // card: the element to put the checkbox on, url: its template link
   function decorate(card, url) {
     if (card.dataset.cbqDone) return;
     card.dataset.cbqDone = '1';
+    const isPrem = isCardPremium(card);
+    card.dataset.cbqPremium = isPrem ? '1' : '0';
+
     const host = card.tagName === 'A' ? card.parentElement || card : card;
     if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
 
     const box = document.createElement('input');
     box.type = 'checkbox';
-    box.className = 'cbq-box';
-    box.title = 'Add to download queue';
+    box.className = 'cbq-box' + (isPrem ? ' cbq-box-pro' : '');
+    box.title = isPrem ? '⭐ Canva Pro template (click to add)' : 'Add to download queue';
     box.dataset.url = url;
+    box.dataset.premium = isPrem ? '1' : '0';
     box.checked = ticked.has(url);
     for (const ev of ['click', 'mousedown', 'pointerdown', 'mouseup', 'pointerup']) {
       box.addEventListener(ev, (e) => e.stopPropagation(), true);
     }
     box.addEventListener('change', () => {
-      if (box.checked) ticked.set(url, titleOf(card));
+      if (box.checked) ticked.set(url, { title: titleOf(card), isPremium: isPrem });
       else ticked.delete(url);
       render();
     });
@@ -147,10 +212,11 @@
   const panel = document.createElement('div');
   panel.className = 'cbq-panel';
   panel.innerHTML = `
-    <div class="cbq-title">Bulk PPTX download</div>
+    <div class="cbq-title">Bulk Downloader</div>
     <div class="cbq-found"></div>
     <button type="button" data-act="this">Add this template</button>
     <button type="button" data-act="all">Tick all on this page</button>
+    <button type="button" data-act="premium" class="cbq-pro-btn">⭐ Tick Premium only</button>
     <button type="button" data-act="none">Clear ticks</button>
     <button type="button" data-act="add" class="cbq-main">Add ticked (0)</button>
     <button type="button" data-act="debug">Copy debug info</button>
@@ -195,13 +261,50 @@
     const act = e.target.dataset && e.target.dataset.act;
     if (act === 'this') {
       const h1 = document.querySelector('h1');
-      send([{ url: location.href, title: (h1 && h1.textContent.trim()) || document.title }]);
-    } else if (act === 'all') {
+      const isPrem = isSinglePagePremium();
+      send([{ url: location.href, title: (h1 && h1.textContent.trim()) || document.title, isPremium: isPrem }]);
+    } else if (act === 'premium') {
+      let count = 0;
       document.querySelectorAll('.cbq-box').forEach((b) => {
-        if (!b.checked) {
+        const card = b.closest(S.cardSelector) || b.parentElement;
+        const isPrem = b.dataset.premium === '1' || isCardPremium(card);
+        if (isPrem) {
           b.checked = true;
-          b.dispatchEvent(new Event('change'));
+          b.dataset.premium = '1';
+          ticked.set(b.dataset.url, { title: titleOf(card), isPremium: true });
+          count++;
+        } else {
+          b.checked = false;
+          ticked.delete(b.dataset.url);
         }
+      });
+      render();
+      say(`Ticked ${count} premium template(s).`);
+    } else if (act === 'all') {
+      chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }).then((st) => {
+        const onlyPrem = Boolean(st && st.onlyPremium);
+        let count = 0;
+        document.querySelectorAll('.cbq-box').forEach((b) => {
+          const card = b.closest(S.cardSelector) || b.parentElement;
+          const isPrem = b.dataset.premium === '1' || isCardPremium(card);
+          if (!onlyPrem || isPrem) {
+            b.checked = true;
+            ticked.set(b.dataset.url, { title: titleOf(card), isPremium: isPrem });
+            count++;
+          } else {
+            b.checked = false;
+            ticked.delete(b.dataset.url);
+          }
+        });
+        render();
+        say(onlyPrem ? `Ticked ${count} premium templates (Premium-only mode).` : `Ticked ${count} templates.`);
+      }).catch(() => {
+        document.querySelectorAll('.cbq-box').forEach((b) => {
+          b.checked = true;
+          const card = b.closest(S.cardSelector) || b.parentElement;
+          ticked.set(b.dataset.url, { title: titleOf(card), isPremium: b.dataset.premium === '1' });
+        });
+        render();
       });
     } else if (act === 'none') {
       ticked.clear();
@@ -215,7 +318,11 @@
         say(`Could not copy: ${err.message}`);
       }
     } else if (act === 'add') {
-      const items = [...ticked].map(([url, title]) => ({ url, title }));
+      const items = [...ticked].map(([url, info]) => {
+        const title = typeof info === 'object' ? info.title : info;
+        const isPremium = typeof info === 'object' ? Boolean(info.isPremium) : false;
+        return { url, title, isPremium };
+      });
       const res = await send(items);
       if (res) {
         ticked.clear();

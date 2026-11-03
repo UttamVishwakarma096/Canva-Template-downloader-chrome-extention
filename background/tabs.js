@@ -1,6 +1,6 @@
 // Opens each template in the worker window, puts the runner script into it,
 // and closes the tab as soon as the template is finished.
-import { update } from './store.js';
+import { update, settings } from './store.js';
 
 // Templates open in their own Chrome window, as the visible tab. Canva's editor
 // may not draw its buttons in a hidden background tab, so keep this window
@@ -108,7 +108,15 @@ export async function injectRunner(tabId, jobId, afterUse) {
     target: { tabId },
     files: ['content/selectors.js', 'content/runner.js'],
   });
-  await chrome.tabs.sendMessage(tabId, { type: 'RUN', jobId, afterUse });
+  const s = await settings();
+  await chrome.tabs.sendMessage(tabId, {
+    type: 'RUN',
+    jobId,
+    afterUse,
+    format: s.format || 'pptx',
+    hasPremiumAccount: Boolean(s.hasPremiumAccount),
+    onlyPremium: Boolean(s.onlyPremium),
+  });
 }
 
 export async function closeTab(tabId) {
