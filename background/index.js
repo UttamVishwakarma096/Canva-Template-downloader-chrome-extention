@@ -8,7 +8,7 @@ import { keepAwake } from './notify.js';
 import { countFiles } from '../lib/fileStore.js';
 import { WORK_SEC_PER_JOB } from '../config.js';
 
-const TEMPLATE_PATH = /^\/templates\/EA[A-Za-z0-9_-]{6,}/;
+const TEMPLATE_PATH = /^\/templates\/[A-Za-z0-9_-]{6,}/;
 const LOGIN_PATH = /^\/(login|signup)\b/;
 
 // ---------- startup ----------

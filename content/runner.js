@@ -210,19 +210,31 @@
 
   // Check if this template is marked as Canva Pro or Paid in Canva's embedded page data
   function isProFromPageData() {
-    const m = location.pathname.match(/\/(EA[A-Za-z0-9_-]{6,})/);
+    const m = location.pathname.match(/\/templates\/([A-Za-z0-9_-]{6,16})/i) || location.pathname.match(/\/([EDt][A-Za-z0-9_-]{8,15}|[A-Za-z0-9_-]{11})/);
     const templateId = m ? m[1] : '';
     if (!templateId) return false;
 
-    // Canva encodes template license in JSON state as: "DI":"<id>",...,"DL":"canva_pro" or "DL":"paid"
-    const regex = new RegExp(
-      `"${templateId}"[\\s\\S]{0,350}"DL"\\s*:\\s*"(canva_pro|paid|canva:paid|canva:pro)"|"DL"\\s*:\\s*"(canva_pro|paid|canva:paid|canva:pro)"[\\s\\S]{0,350}"${templateId}"`
-    );
+    // Canva encodes template license in JSON state as: "DI":"<id>",...,"DL":"canva_pro" or "DL":"paid" or "is_pro":true
+    const patterns = [
+      new RegExp(`"${templateId}"[\\s\\S]{0,450}?(?:"DL"|"license"|"pricing_type"|"type")\\s*:\\s*"(canva_pro|paid|canva:paid|canva:pro|pro)"`, 'i'),
+      new RegExp(`(?:"DL"|"license"|"pricing_type"|"type")\\s*:\\s*"(canva_pro|paid|canva:paid|canva:pro|pro)"[\\s\\S]{0,450}?"${templateId}"`, 'i'),
+      new RegExp(`"${templateId}"[\\s\\S]{0,450}?(?:"is_pro"|"isPro"|"isPremium"|"is_premium")\\s*:\\s*true`, 'i'),
+      new RegExp(`(?:"is_pro"|"isPro"|"isPremium"|"is_premium")\\s*:\\s*true[\\s\\S]{0,450}?"${templateId}"`, 'i'),
+    ];
     const scripts = document.querySelectorAll('script');
     for (const s of scripts) {
-      if (s.textContent && regex.test(s.textContent)) return true;
+      const txt = s.textContent;
+      if (!txt || !txt.includes(templateId)) continue;
+      for (const p of patterns) {
+        if (p.test(txt)) return true;
+      }
     }
-    if (regex.test(document.documentElement.innerHTML.slice(0, 600000))) return true;
+    const htmlSlice = document.documentElement.innerHTML.slice(0, 800000);
+    if (htmlSlice.includes(templateId)) {
+      for (const p of patterns) {
+        if (p.test(htmlSlice)) return true;
+      }
+    }
     return false;
   }
 
@@ -257,11 +269,23 @@
       // Check SVG crown icons
       if (el.tagName && el.tagName.toLowerCase() === 'svg') {
         if (cls.includes('crown') || dataIcon.includes('crown')) return true;
-        const paths = el.querySelectorAll('path');
+        const paths = el.querySelectorAll('path, use, polygon, g');
         for (const p of paths) {
           const pId = norm(p.getAttribute('id') || '');
           const pCls = norm(p.getAttribute('class') || '');
           if (pId.includes('crown') || pCls.includes('crown')) return true;
+          const d = p.getAttribute('d') || '';
+          if (
+            d.includes('M3.5 17.5') ||
+            d.includes('14.7 9.87') ||
+            d.includes('8.3 9.76') ||
+            d.includes('M2.5 6.09') ||
+            d.includes('M5 16L3 5') ||
+            d.includes('M5 16') ||
+            (d.includes('5 16') && (d.includes('3 5') || d.includes('21 5') || d.includes('19 16') || d.includes('12 4')))
+          ) {
+            return true;
+          }
         }
       }
 

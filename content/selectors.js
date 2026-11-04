@@ -104,14 +104,14 @@ self.CANVA_SELECTORS = {
   // Page addresses.
   loginPath: /^\/(login|signup)\b/,
   editorPath: /^\/design\b/,
-  templatePath: /^\/templates\/EA[A-Za-z0-9_-]{6,}/,
-  // A template id looks like EAFhHM4bhZE. Links may be /templates/EAF.../,
-  // a translated path like /es_es/plantillas/EAF.../, or ?template=EAF...
-  templateIdInPath: /\/(EA[A-Za-z0-9_-]{6,})\/?$/,
+  templatePath: /^\/templates\/[A-Za-z0-9_-]{6,}/,
+  // Template IDs start with EA, DA, DAG, tA, etc., typically 11 chars. Links may be /templates/<id>/,
+  // /templates/<id>-<title-slug>/, a translated path like /es_es/plantillas/<id>/, or ?template=<id>
+  templateIdInPath: /\/([A-Za-z0-9_-]{6,16})(?:-[^/?#]+)?\/?$/,
   templateIdInQuery: ['template', 'templateId'],
   // The box around one template picture on the search page (/s/templates).
   cardSelector:
-    '[role="group"][aria-label*="Preview" i], article, [data-testid*="template" i], [data-testid*="card" i], [data-testid*="search-result" i], li[role="listitem"]',
+    '[role="group"][aria-label*="Preview" i], [role="group"], article, [data-testid*="template" i], [data-testid*="card" i], [data-testid*="search-result" i], li[role="listitem"], [class*="search-result" i]',
 
   // Seconds to wait for one button before giving up.
   stepTimeoutSec: 15,

@@ -13,15 +13,20 @@
     try {
       const u = new URL(href, location.href);
       if (!/(^|\.)canva\.com$/.test(u.hostname)) return null;
+      if (/^\/design\//.test(u.pathname)) return null;
+      // Match /templates/<id> or /templates/<id>-<slug>
+      const m = u.pathname.match(/\/templates\/([A-Za-z0-9_-]{6,16})(?:-[^/?#]+)?(?:\/|$)/i);
+      if (m) {
+        return `https://www.canva.com/templates/${m[1]}/`;
+      }
       if (S.templatePath.test(u.pathname)) {
         return `https://www.canva.com${u.pathname.endsWith('/') ? u.pathname : u.pathname + '/'}`;
       }
-      if (/^\/design\//.test(u.pathname)) return null;
-      const m = S.templateIdInPath.exec(u.pathname.replace(/\/$/, '') + '/');
-      if (m) return `https://www.canva.com/templates/${m[1]}/`;
+      const mPath = S.templateIdInPath.exec(u.pathname.replace(/\/$/, '') + '/');
+      if (mPath) return `https://www.canva.com/templates/${mPath[1]}/`;
       for (const key of S.templateIdInQuery) {
         const id = u.searchParams.get(key);
-        if (id && /^EA[A-Za-z0-9_-]{6,}$/.test(id)) return `https://www.canva.com/templates/${id}/`;
+        if (id && /^[A-Za-z0-9_-]{6,16}$/.test(id)) return `https://www.canva.com/templates/${id}/`;
       }
       return null;
     } catch {
@@ -40,8 +45,8 @@
     if (!el || el === document.body || el === document.documentElement) return true;
     try {
       if (el.querySelectorAll('.cbq-box').length > 1) return true;
-      if (el.querySelectorAll('img[src*="template.canva.com"]').length > 1) return true;
-      if (el.querySelectorAll('a[href*="/templates/EA"]').length > 1) return true;
+      if (el.querySelectorAll('img[src*="canva.com"]').length > 1) return true;
+      if (el.querySelectorAll('a[href*="/templates/"]').length > 1) return true;
     } catch (_) {}
     return false;
   }
@@ -67,7 +72,36 @@
         best = cur;
       }
     }
+    // If the immediate parent is also a single card element (not a multi-card wrapper), expand to it
+    if (best && best.parentElement && !isMultiCardContainer(best.parentElement)) {
+      const pRole = (best.parentElement.getAttribute('role') || '').toLowerCase();
+      const pTestid = (best.parentElement.getAttribute('data-testid') || '').toLowerCase();
+      if (best.parentElement.tagName === 'ARTICLE' || pRole === 'listitem' || /card|template|result/i.test(pTestid)) {
+        best = best.parentElement;
+      }
+    }
     return best;
+  }
+
+  // Checks script tags for license info near a template ID
+  function isProInPageData(templateId) {
+    if (!templateId) return false;
+    const id = templateId.trim();
+    if (!id) return false;
+    const patterns = [
+      new RegExp(`"${id}"[\\s\\S]{0,600}?(?:"DL"|"license"|"pricing_type"|"type")\\s*:\\s*"(canva_pro|paid|canva:paid|canva:pro|pro)"`, 'i'),
+      new RegExp(`(?:"DL"|"license"|"pricing_type"|"type")\\s*:\\s*"(canva_pro|paid|canva:paid|canva:pro|pro)"[\\s\\S]{0,600}?"${id}"`, 'i'),
+      new RegExp(`"${id}"[\\s\\S]{0,600}?(?:"is_pro"|"isPro"|"isPremium"|"is_premium")\\s*:\\s*true`, 'i'),
+      new RegExp(`(?:"is_pro"|"isPro"|"isPremium"|"is_premium")\\s*:\\s*true[\\s\\S]{0,600}?"${id}"`, 'i'),
+    ];
+    for (const s of document.querySelectorAll('script')) {
+      const txt = s.textContent;
+      if (!txt || !txt.includes(id)) continue;
+      for (const p of patterns) {
+        if (p.test(txt)) return true;
+      }
+    }
+    return false;
   }
 
   // Tests if a text strictly represents a Canva Pro badge (not matching titles like "Project" or "Professional")
@@ -75,14 +109,22 @@
     if (!str || typeof str !== 'string') return false;
     const s = str.trim().toLowerCase();
     if (!s) return false;
+    // Disallow false-positive words unless accompanied by "canva pro" or "crown"
+    const hasCanvaPro = s.includes('canva pro') || s.includes('crown');
+    if (!hasCanvaPro && /\b(project|professional|profile|product|promise|program|progress|property|protocol|provide|process|resume|portfolio|presentation)\b/i.test(s)) {
+      return false;
+    }
     // Strict exact badge texts
     if (s === 'pro' || s === 'canva pro' || s === 'crown' || s === 'paid' || s === 'premium') return true;
     if (s === '👑 pro' || s === '👑' || s === '⭐ pro' || s === '⭐' || s === 'pro ⭐') return true;
-    // Strict short phrases
-    if (/^(canva\s+pro|pro)\s*(template|badge|icon)?$/i.test(s)) return true;
-    if (/^included with (canva\s+pro|pro)$/i.test(s)) return true;
-    if (/^(upgrade to|unlock with|try|get)\s*(canva\s+pro|pro)$/i.test(s)) return true;
-    if (s === 'unlock this template' || s === 'contains paid elements' || s === 'paid template') return true;
+    // Crown variations
+    if (/^crown(\s+(icon|badge|symbol))?$/i.test(s)) return true;
+    // Strict phrases
+    if (/^(canva\s+pro|pro)\s*(template|badge|icon|item|element|design|only|member|feature)?$/i.test(s)) return true;
+    if (/^included (with|in) (canva\s+pro|pro)$/i.test(s)) return true;
+    if (/^(upgrade to|unlock with|try|get|requires?)\s*(canva\s+pro|pro)$/i.test(s)) return true;
+    if (/^(paid|premium)\s*(template|content|element|item)?$/i.test(s)) return true;
+    if (s === 'unlock this template' || s === 'contains paid elements') return true;
     return false;
   }
 
@@ -91,70 +133,91 @@
     if (!card) return false;
     const root = getCardContainer(card) || card;
 
-    // 1. Check all elements inside the card with identifying attributes (excluding the root itself to avoid matching card title in aria-label)
-    const tagged = root.querySelectorAll('[aria-label], [title], [data-icon], [data-testid], [data-tooltip]');
-    for (const el of tagged) {
-      if (el === root) continue;
-      // Skip the main preview image alt/title (contains template title, e.g. "Pro Gaming Resume")
-      if (el.tagName === 'IMG' && ((el.src && el.src.includes('template.canva.com')) || el.getBoundingClientRect().width > 80)) {
-        continue;
-      }
-      if (
-        isProBadgeText(el.getAttribute('aria-label')) ||
-        isProBadgeText(el.getAttribute('title')) ||
-        isProBadgeText(el.getAttribute('data-tooltip')) ||
-        isProBadgeText(el.getAttribute('data-icon'))
-      ) {
-        return true;
-      }
-      const icon = (el.getAttribute('data-icon') || '').toLowerCase();
-      if (icon === 'crown' || icon === 'canva-pro' || icon === 'pro') return true;
+    // 1. Check template ID against embedded JSON state in script tags
+    const mId = (url || '').match(/\/templates\/([A-Za-z0-9_-]{6,16})/i) || (url || '').match(/\b([EDt][A-Za-z0-9_-]{8,15}|[A-Za-z0-9_-]{11})\b/);
+    const tId = mId ? mId[1] : '';
+    if (tId && isProInPageData(tId)) return true;
 
-      const tid = (el.getAttribute('data-testid') || '').toLowerCase();
-      if (/pro-?badge|crown-?icon|premium-?badge|pro-?icon/i.test(tid)) return true;
+    // Determine scopes to check: the root card container, and its direct parent if within the same single card
+    const scopes = [root];
+    if (root.parentElement && root.parentElement !== document.body && !isMultiCardContainer(root.parentElement)) {
+      scopes.push(root.parentElement);
     }
 
-    // 2. Check SVGs and their paths/classes
-    for (const svg of root.querySelectorAll('svg')) {
-      if (isProBadgeText(svg.getAttribute('aria-label')) || isProBadgeText(svg.getAttribute('title'))) return true;
-      const sCls = (typeof svg.className === 'string' ? svg.className : (svg.getAttribute('class') || '')).toLowerCase();
-      if (/\bcrown\b/i.test(sCls) || /pro-?badge/i.test(sCls) || /premium-?badge/i.test(sCls)) return true;
-
-      const titleEl = svg.querySelector('title');
-      if (titleEl && isProBadgeText(titleEl.textContent)) return true;
-
-      if (svg.parentElement && (isProBadgeText(svg.parentElement.getAttribute('aria-label')) || isProBadgeText(svg.parentElement.getAttribute('title')))) {
-        return true;
-      }
-
-      for (const p of svg.querySelectorAll('path, use, polygon, g')) {
-        const pId = (p.getAttribute('id') || '').toLowerCase();
-        const pCls = (p.getAttribute('class') || '').toLowerCase();
-        const pHref = (p.getAttribute('href') || p.getAttribute('xlink:href') || '').toLowerCase();
-        if (pId.includes('crown') || pCls.includes('crown') || pHref.includes('crown')) return true;
-
-        const d = p.getAttribute('d') || '';
-        // Canva Pro crown SVG path coordinates
-        if (d.includes('M3.5 17.5') || d.includes('14.7 9.87') || d.includes('8.3 9.76') || (d.includes('M5 16L3 5') && d.includes('15.5 10'))) {
+    for (const scope of scopes) {
+      // 2. Check all elements inside the scope with identifying attributes
+      const tagged = scope.querySelectorAll('[aria-label], [title], [data-icon], [data-testid], [data-tooltip]');
+      for (const el of tagged) {
+        if (el === scope) continue;
+        // Skip the main preview image alt/title (contains template title)
+        if (el.tagName === 'IMG' && ((el.src && el.src.includes('canva.com')) || el.getBoundingClientRect().width > 80)) {
+          continue;
+        }
+        if (
+          isProBadgeText(el.getAttribute('aria-label')) ||
+          isProBadgeText(el.getAttribute('title')) ||
+          isProBadgeText(el.getAttribute('data-tooltip')) ||
+          isProBadgeText(el.getAttribute('data-icon'))
+        ) {
           return true;
         }
-      }
-    }
+        const icon = (el.getAttribute('data-icon') || '').toLowerCase();
+        if (icon === 'crown' || icon === 'canva-pro' || icon === 'pro') return true;
 
-    // 3. Check visible text badges (small pill or tag with exact "Pro" or "PRO")
-    for (const el of root.querySelectorAll('span, div, p, b, strong, em, button')) {
-      const r = el.getBoundingClientRect();
-      if (r.width > 0 && r.width <= 90 && r.height > 0 && r.height <= 45) {
-        const txt = (el.textContent || '').trim();
-        if (isProBadgeText(txt)) return true;
+        const tid = (el.getAttribute('data-testid') || '').toLowerCase();
+        if (/pro-?badge|crown-?icon|premium-?badge|pro-?icon/i.test(tid)) return true;
       }
-    }
 
-    // 4. Check for Pro CTA buttons inside the card
-    for (const btn of root.querySelectorAll('button, [role="button"], a')) {
-      const txt = (btn.textContent || '').trim().toLowerCase();
-      const aria = (btn.getAttribute('aria-label') || '').trim().toLowerCase();
-      if (S.proCtaButtons.some((cta) => txt.includes(cta) || aria.includes(cta))) return true;
+      // 3. Check SVGs and their paths/classes
+      for (const svg of scope.querySelectorAll('svg')) {
+        if (isProBadgeText(svg.getAttribute('aria-label')) || isProBadgeText(svg.getAttribute('title'))) return true;
+        const sCls = (typeof svg.className === 'string' ? svg.className : (svg.getAttribute('class') || '')).toLowerCase();
+        if (/\bcrown\b/i.test(sCls) || /pro-?badge/i.test(sCls) || /premium-?badge/i.test(sCls)) return true;
+
+        const titleEl = svg.querySelector('title');
+        if (titleEl && isProBadgeText(titleEl.textContent)) return true;
+
+        if (svg.parentElement && (isProBadgeText(svg.parentElement.getAttribute('aria-label')) || isProBadgeText(svg.parentElement.getAttribute('title')))) {
+          return true;
+        }
+
+        for (const p of svg.querySelectorAll('path, use, polygon, g')) {
+          const pId = (p.getAttribute('id') || '').toLowerCase();
+          const pCls = (p.getAttribute('class') || '').toLowerCase();
+          const pHref = (p.getAttribute('href') || p.getAttribute('xlink:href') || '').toLowerCase();
+          if (pId.includes('crown') || pCls.includes('crown') || pHref.includes('crown')) return true;
+
+          const d = p.getAttribute('d') || '';
+          // Canva Pro crown SVG path coordinates
+          if (
+            d.includes('M3.5 17.5') ||
+            d.includes('14.7 9.87') ||
+            d.includes('8.3 9.76') ||
+            d.includes('M2.5 6.09') ||
+            d.includes('M5 16L3 5') ||
+            d.includes('M5 16') ||
+            (d.includes('5 16') && (d.includes('3 5') || d.includes('21 5') || d.includes('19 16') || d.includes('12 4')))
+          ) {
+            return true;
+          }
+        }
+      }
+
+      // 4. Check visible text badges (small pill or tag with exact "Pro" or "PRO")
+      for (const el of scope.querySelectorAll('span, div, p, b, strong, em, button')) {
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.width <= 110 && r.height > 0 && r.height <= 50) {
+          const txt = (el.textContent || '').trim();
+          if (isProBadgeText(txt)) return true;
+        }
+      }
+
+      // 5. Check for Pro CTA buttons inside the card
+      for (const btn of scope.querySelectorAll('button, [role="button"], a')) {
+        const txt = (btn.textContent || '').trim().toLowerCase();
+        const aria = (btn.getAttribute('aria-label') || '').trim().toLowerCase();
+        if (S.proCtaButtons.some((cta) => txt.includes(cta) || aria.includes(cta))) return true;
+      }
     }
 
     return false;
@@ -221,9 +284,10 @@
   }
 
   // Way 2: picture cards. On Canva's search page (/s/templates) the cards are
-  // not links, but each picture comes from template.canva.com/<template id>/...
-  const ID_IN_TEXT = /\b(EA[A-Za-z0-9_-]{9})\b/;
-  const ID_IN_IMAGE = /^https:\/\/template\.canva\.com\/(EA[A-Za-z0-9_-]{9})\//;
+  // not always links, but pictures come from template.canva.com/<template id>/...
+  // or media-graph.canva.com, or have template ids in attributes.
+  const ID_IN_TEXT = /\b([EDt][A-Za-z0-9_-]{8,15}|[A-Za-z0-9_-]{11})\b/;
+  const ID_IN_IMAGE = /(?:template(?:-images)?|media-(?:graph|public))\.canva\.com\/([A-Za-z0-9_-]{8,16})\//i;
 
   function findCardForPicture(img) {
     let el = img;
@@ -242,7 +306,8 @@
     if (img.closest('[data-cbq-done], .cbq-panel')) return;
     const r = img.getBoundingClientRect();
     if (r.width < 80 || r.height < 50) return;
-    const m = ID_IN_IMAGE.exec(img.currentSrc || img.src || '');
+    const imgSrc = img.currentSrc || img.src || img.getAttribute('src') || img.dataset.src || img.srcset || '';
+    const m = ID_IN_IMAGE.exec(imgSrc);
     if (m) {
       const card = findCardForPicture(img) || img.parentElement;
       return decorate(card, `https://www.canva.com/templates/${m[1]}/`);
@@ -366,6 +431,8 @@
       const isPrem = isSinglePagePremium();
       send([{ url: location.href, title: (h1 && h1.textContent.trim()) || document.title, isPremium: isPrem }]);
     } else if (act === 'premium') {
+      document.querySelectorAll('a[href]').forEach(fromLink);
+      document.querySelectorAll('img').forEach(fromPicture);
       let count = 0;
       const allBoxes = document.querySelectorAll('.cbq-box');
       allBoxes.forEach((b) => {
@@ -393,6 +460,8 @@
         say(`No premium templates detected out of ${allBoxes.length} templates on this page.`);
       }
     } else if (act === 'all') {
+      document.querySelectorAll('a[href]').forEach(fromLink);
+      document.querySelectorAll('img').forEach(fromPicture);
       chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }).then((st) => {
         const onlyPrem = Boolean(st && st.onlyPremium);
         let count = 0;
