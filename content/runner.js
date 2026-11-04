@@ -210,7 +210,7 @@
 
   // Check if this template is marked as Canva Pro or Paid in Canva's embedded page data
   function isProFromPageData() {
-    const m = location.pathname.match(/\/templates\/([A-Za-z0-9_-]{6,16})/i) || location.pathname.match(/\/([EDt][A-Za-z0-9_-]{8,15}|[A-Za-z0-9_-]{11})/);
+    const m = location.pathname.match(/\/templates\/([A-Za-z0-9_]{6,16})/i) || location.pathname.match(/\/([EDt][A-Za-z0-9_]{8,15}|[A-Za-z0-9_]{11})/);
     const templateId = m ? m[1] : '';
     if (!templateId) return false;
 

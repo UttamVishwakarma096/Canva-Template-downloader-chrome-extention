@@ -15,7 +15,7 @@
       if (!/(^|\.)canva\.com$/.test(u.hostname)) return null;
       if (/^\/design\//.test(u.pathname)) return null;
       // Match /templates/<id> or /templates/<id>-<slug>
-      const m = u.pathname.match(/\/templates\/([A-Za-z0-9_-]{6,16})(?:-[^/?#]+)?(?:\/|$)/i);
+      const m = u.pathname.match(/\/templates\/([A-Za-z0-9_]{6,16})(?:-[^/?#]+)?(?:\/|$)/i);
       if (m) {
         return `https://www.canva.com/templates/${m[1]}/`;
       }
@@ -26,7 +26,7 @@
       if (mPath) return `https://www.canva.com/templates/${mPath[1]}/`;
       for (const key of S.templateIdInQuery) {
         const id = u.searchParams.get(key);
-        if (id && /^[A-Za-z0-9_-]{6,16}$/.test(id)) return `https://www.canva.com/templates/${id}/`;
+        if (id && /^[A-Za-z0-9_]{6,16}$/.test(id)) return `https://www.canva.com/templates/${id}/`;
       }
       return null;
     } catch {
@@ -134,7 +134,7 @@
     const root = getCardContainer(card) || card;
 
     // 1. Check template ID against embedded JSON state in script tags
-    const mId = (url || '').match(/\/templates\/([A-Za-z0-9_-]{6,16})/i) || (url || '').match(/\b([EDt][A-Za-z0-9_-]{8,15}|[A-Za-z0-9_-]{11})\b/);
+    const mId = (url || '').match(/\/templates\/([A-Za-z0-9_]{6,16})/i) || (url || '').match(/\b([EDt][A-Za-z0-9_]{8,15}|[A-Za-z0-9_]{11})\b/);
     const tId = mId ? mId[1] : '';
     if (tId && isProInPageData(tId)) return true;
 

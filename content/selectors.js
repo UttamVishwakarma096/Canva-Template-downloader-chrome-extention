@@ -107,7 +107,7 @@ self.CANVA_SELECTORS = {
   templatePath: /^\/templates\/[A-Za-z0-9_-]{6,}/,
   // Template IDs start with EA, DA, DAG, tA, etc., typically 11 chars. Links may be /templates/<id>/,
   // /templates/<id>-<title-slug>/, a translated path like /es_es/plantillas/<id>/, or ?template=<id>
-  templateIdInPath: /\/([A-Za-z0-9_-]{6,16})(?:-[^/?#]+)?\/?$/,
+  templateIdInPath: /\/([A-Za-z0-9_]{6,16})(?:-[^/?#]+)?\/?$/,
   templateIdInQuery: ['template', 'templateId'],
   // The box around one template picture on the search page (/s/templates).
   cardSelector:
