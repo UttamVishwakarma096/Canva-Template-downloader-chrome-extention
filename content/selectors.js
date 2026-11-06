@@ -32,6 +32,8 @@ self.CANVA_SELECTORS = {
     'subscribe to canva pro',
     'pay and download',
     'download with canva pro',
+    'open in canva pro',
+    'pro trial',
   ],
 
   // Steps 2 to 5, in the editor.
@@ -111,7 +113,7 @@ self.CANVA_SELECTORS = {
   templateIdInQuery: ['template', 'templateId'],
   // The box around one template picture on the search page (/s/templates).
   cardSelector:
-    '[role="group"][aria-label*="Preview" i], [role="group"], article, [data-testid*="template" i], [data-testid*="card" i], [data-testid*="search-result" i], li[role="listitem"], [class*="search-result" i]',
+    '[role="group"][aria-label*="Preview" i], [role="group"], article, [data-testid*="template" i], [data-testid*="card" i], [data-testid*="search-result" i], [data-testid*="grid-item" i], li[role="listitem"], [role="listitem"], [class*="search-result" i]',
 
   // Seconds to wait for one button before giving up.
   stepTimeoutSec: 15,

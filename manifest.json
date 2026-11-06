@@ -15,7 +15,7 @@
     "power",
     "contentSettings"
   ],
-  "host_permissions": ["https://*.canva.com/*"],
+  "host_permissions": ["https://*.canva.com/*", "https://canva.com/*"],
   "background": { "service_worker": "background/index.js", "type": "module" },
   "action": {
     "default_popup": "popup/popup.html",
@@ -25,8 +25,8 @@
   "options_page": "options/options.html",
   "content_scripts": [
     {
-      "matches": ["https://www.canva.com/*"],
-      "exclude_matches": ["https://www.canva.com/design/*"],
+      "matches": ["https://*.canva.com/*", "https://canva.com/*"],
+      "exclude_matches": ["https://*.canva.com/design/*", "https://canva.com/design/*"],
       "js": ["content/selectors.js", "content/picker.js"],
       "css": ["content/picker.css"],
       "run_at": "document_idle"

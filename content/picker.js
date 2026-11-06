@@ -13,21 +13,21 @@
     try {
       const u = new URL(href, location.href);
       if (!/(^|\.)canva\.com$/.test(u.hostname)) return null;
-      if (/^\/design\//.test(u.pathname)) return null;
-      // Match /templates/<id> or /templates/<id>-<slug>
-      const m = u.pathname.match(/\/templates\/([A-Za-z0-9_]{6,16})(?:-[^/?#]+)?(?:\/|$)/i);
+      // Match /templates/<id> or /templates/<id>-<slug>, or international: /plantillas/, /modeles/, /vorlagen/
+      const m = u.pathname.match(/\/(?:templates|plantillas|modeles|vorlagen)(?:\/preview)?\/([A-Za-z0-9_]{6,16})(?:-[^/?#]+)?(?:\/|$)/i);
       if (m) {
         return `https://www.canva.com/templates/${m[1]}/`;
       }
+      for (const key of ['template', 'templateId', 'template_id', 'designTemplateId', 'design_template_id']) {
+        const id = u.searchParams.get(key);
+        if (id && /^[A-Za-z0-9_]{6,16}$/.test(id)) return `https://www.canva.com/templates/${id}/`;
+      }
+      if (/^\/design\//.test(u.pathname)) return null;
       if (S.templatePath.test(u.pathname)) {
         return `https://www.canva.com${u.pathname.endsWith('/') ? u.pathname : u.pathname + '/'}`;
       }
       const mPath = S.templateIdInPath.exec(u.pathname.replace(/\/$/, '') + '/');
       if (mPath) return `https://www.canva.com/templates/${mPath[1]}/`;
-      for (const key of S.templateIdInQuery) {
-        const id = u.searchParams.get(key);
-        if (id && /^[A-Za-z0-9_]{6,16}$/.test(id)) return `https://www.canva.com/templates/${id}/`;
-      }
       return null;
     } catch {
       return null;
@@ -35,18 +35,76 @@
   }
 
   function titleOf(card) {
-    const img = card.querySelector('img[alt]');
-    const t = (img && img.alt) || card.getAttribute('aria-label') || card.textContent || '';
-    return t.replace(/^Preview,\s*/, '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (!card) return '';
+    const img = card.querySelector('img[alt]:not([alt=""]):not([alt*="avatar" i])');
+    const t = (img && img.alt) || card.getAttribute('aria-label') || card.getAttribute('title') || card.textContent || '';
+    return t
+      .replace(/^Preview,\s*/i, '')
+      .replace(/[,\-—]\s*(?:canva\s+)?pro\s*$/i, '')
+      .replace(/\s*\((?:canva\s+)?pro\)\s*$/i, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 120);
+  }
+
+  // Checks if an element is part of Canva's sidebars, navigation, headers, drawers, or menus
+  function isSidebarOrNav(el) {
+    if (!el || el === document.body || el === document.documentElement) return false;
+    // 1. Check closest semantic, role, aria-label, testid, and class selectors
+    const side = el.closest(
+      'header, nav, aside, [role="navigation"], [role="banner"], [role="menu"], [role="menubar"], [role="tablist"], ' +
+      '[aria-label*="navigation" i], [aria-label*="sidebar" i], [aria-label*="side nav" i], ' +
+      '[aria-label*="nav rail" i], [aria-label*="primary navigation" i], [aria-label*="main navigation" i], ' +
+      '[data-testid*="sidebar" i], [data-testid*="navigation" i], [data-testid*="nav-rail" i], ' +
+      '[data-testid*="nav_rail" i], [data-testid*="side-panel" i], [data-testid*="left-nav" i], ' +
+      '[data-testid*="drawer" i], [data-testid*="filter" i], ' +
+      '[class*="sidebar" i], [class*="side-nav" i], [class*="sidenav" i], [class*="side_nav" i], ' +
+      '[class*="nav-rail" i], [class*="navRail" i], ' +
+      '.cbq-panel'
+    );
+    if (side) return true;
+
+    // 2. Walk up parents to check attributes on any wrapper
+    let cur = el;
+    for (let i = 0; cur && i < 8; i++) {
+      if (cur === document.body || cur === document.documentElement) break;
+      const tag = cur.tagName;
+      if (tag === 'NAV' || tag === 'ASIDE' || tag === 'HEADER') return true;
+      const role = (cur.getAttribute('role') || '').toLowerCase();
+      if (role === 'navigation' || role === 'banner' || role === 'menu' || role === 'menubar') return true;
+      const aria = (cur.getAttribute('aria-label') || '').toLowerCase();
+      if (aria.includes('sidebar') || aria.includes('side nav') || aria.includes('navigation') || aria.includes('nav rail')) return true;
+      const testid = (cur.getAttribute('data-testid') || '').toLowerCase();
+      if (testid.includes('sidebar') || testid.includes('side-nav') || testid.includes('navigation') || testid.includes('nav-rail')) return true;
+      cur = cur.parentElement;
+    }
+
+    return false;
   }
 
   // Checks if an element contains multiple template items (e.g. is a grid/section wrapper)
   function isMultiCardContainer(el) {
     if (!el || el === document.body || el === document.documentElement) return true;
     try {
-      if (el.querySelectorAll('.cbq-box').length > 1) return true;
-      if (el.querySelectorAll('img[src*="canva.com"]').length > 1) return true;
-      if (el.querySelectorAll('a[href*="/templates/"]').length > 1) return true;
+      // 1. Multiple checkboxes with DIFFERENT template URLs
+      const boxes = el.querySelectorAll('.cbq-box');
+      if (boxes.length > 1) {
+        const urls = new Set([...boxes].map((b) => b.dataset.url).filter(Boolean));
+        if (urls.size > 1) return true;
+      }
+      // 2. Multiple template links with DIFFERENT template URLs
+      const links = el.querySelectorAll('a[href*="/templates/"], a[href*="/plantillas/"], a[href*="/modeles/"], a[href*="/vorlagen/"]');
+      if (links.length > 1) {
+        const urls = new Set([...links].map((a) => templateUrl(a.href)).filter(Boolean));
+        if (urls.size > 1) return true;
+      }
+      // 3. Multiple distinct article or listitem elements
+      if (el.querySelectorAll('article, [role="listitem"]').length > 1) return true;
+      // 4. Grid or list roles with multiple immediate children
+      const role = (el.getAttribute('role') || '').toLowerCase();
+      if ((role === 'grid' || role === 'feed' || role === 'list') && el.children.length > 1) {
+        return true;
+      }
     } catch (_) {}
     return false;
   }
@@ -54,31 +112,34 @@
   // Finds the outer template card container for any element (checkbox, link, or image)
   function getCardContainer(el) {
     if (!el) return null;
-    let cur = el;
     let best = el;
-    for (let i = 0; cur && i < 8; i++) {
-      cur = cur.parentElement;
-      if (!cur || cur === document.body || cur === document.documentElement) break;
-      if (isMultiCardContainer(cur)) break;
-      const role = (cur.getAttribute('role') || '').toLowerCase();
-      const testid = (cur.getAttribute('data-testid') || '').toLowerCase();
-      const aria = (cur.getAttribute('aria-label') || '').toLowerCase();
-      if (cur.tagName === 'ARTICLE' || role === 'listitem' || aria.startsWith('preview') || /card|template|result/i.test(testid)) {
-        best = cur;
-        break;
-      }
-      const r = cur.getBoundingClientRect();
-      if (r.width >= 100 && r.width <= 700 && r.height >= 80 && r.height <= 950) {
-        best = cur;
-      }
+
+    // Fast path: find closest semantic card container
+    const candidate = el.closest(
+      'article, [role="listitem"], [role="group"], [data-testid*="card" i], [data-testid*="template" i], [data-testid*="search-result" i], [data-testid*="grid-item" i], li'
+    );
+    if (candidate && candidate !== document.body && candidate !== document.documentElement && !isMultiCardContainer(candidate)) {
+      best = candidate;
     }
-    // If the immediate parent is also a single card element (not a multi-card wrapper), expand to it
-    if (best && best.parentElement && !isMultiCardContainer(best.parentElement)) {
-      const pRole = (best.parentElement.getAttribute('role') || '').toLowerCase();
-      const pTestid = (best.parentElement.getAttribute('data-testid') || '').toLowerCase();
-      if (best.parentElement.tagName === 'ARTICLE' || pRole === 'listitem' || /card|template|result/i.test(pTestid)) {
-        best = best.parentElement;
+
+    // Walk up to find the topmost valid single card container
+    let cur = best;
+    for (let i = 0; cur && i < 10; i++) {
+      const parent = cur.parentElement;
+      if (!parent || parent === document.body || parent === document.documentElement) break;
+      if (isMultiCardContainer(parent) || isSidebarOrNav(parent)) break;
+      const role = (parent.getAttribute('role') || '').toLowerCase();
+      const testid = (parent.getAttribute('data-testid') || '').toLowerCase();
+      const aria = (parent.getAttribute('aria-label') || '').toLowerCase();
+      if (parent.tagName === 'ARTICLE' || role === 'listitem' || role === 'group' || aria.startsWith('preview') || /card|template|result/i.test(testid)) {
+        best = parent;
+      } else {
+        const r = parent.getBoundingClientRect();
+        if ((r.width >= 80 && r.width <= 800 && r.height >= 80 && r.height <= 1000) || (r.width === 0 && r.height === 0)) {
+          best = parent;
+        }
       }
+      cur = parent;
     }
     return best;
   }
@@ -89,10 +150,10 @@
     const id = templateId.trim();
     if (!id) return false;
     const patterns = [
-      new RegExp(`"${id}"[\\s\\S]{0,600}?(?:"DL"|"license"|"pricing_type"|"type")\\s*:\\s*"(canva_pro|paid|canva:paid|canva:pro|pro)"`, 'i'),
-      new RegExp(`(?:"DL"|"license"|"pricing_type"|"type")\\s*:\\s*"(canva_pro|paid|canva:paid|canva:pro|pro)"[\\s\\S]{0,600}?"${id}"`, 'i'),
-      new RegExp(`"${id}"[\\s\\S]{0,600}?(?:"is_pro"|"isPro"|"isPremium"|"is_premium")\\s*:\\s*true`, 'i'),
-      new RegExp(`(?:"is_pro"|"isPro"|"isPremium"|"is_premium")\\s*:\\s*true[\\s\\S]{0,600}?"${id}"`, 'i'),
+      new RegExp(`"${id}"[\\s\\S]{0,600}?(?:"DL"|"license"|"pricing_type"|"priceTier"|"pricingTier"|"tier"|"plan"|"billingType"|"accessLevel"|"badge"|"type")\\s*:\\s*"(canva_pro|paid|canva:paid|canva:pro|pro|crown)"`, 'i'),
+      new RegExp(`(?:"DL"|"license"|"pricing_type"|"priceTier"|"pricingTier"|"tier"|"plan"|"billingType"|"accessLevel"|"badge"|"type")\\s*:\\s*"(canva_pro|paid|canva:paid|canva:pro|pro|crown)"[\\s\\S]{0,600}?"${id}"`, 'i'),
+      new RegExp(`"${id}"[\\s\\S]{0,600}?(?:"is_pro"|"isPro"|"isPremium"|"is_premium"|"isPaid"|"is_paid"|"hasPaidElements"|"is_locked")\\s*:\\s*true`, 'i'),
+      new RegExp(`(?:"is_pro"|"isPro"|"isPremium"|"is_premium"|"isPaid"|"is_paid"|"hasPaidElements"|"is_locked")\\s*:\\s*true[\\s\\S]{0,600}?"${id}"`, 'i'),
     ];
     for (const s of document.querySelectorAll('script')) {
       const txt = s.textContent;
@@ -104,11 +165,35 @@
     return false;
   }
 
+  function isCrownPath(d) {
+    if (!d || typeof d !== 'string') return false;
+    return (
+      d.includes('M5 16') ||
+      d.includes('M3 17') ||
+      d.includes('3 17h18') ||
+      d.includes('14.7 9.87') ||
+      d.includes('8.3 9.76') ||
+      d.includes('M3.5 17.5') ||
+      d.includes('M2.5 6.09') ||
+      d.includes('M4 13.5') ||
+      d.includes('19 16') ||
+      d.includes('18 20') ||
+      d.includes('5 19') ||
+      d.includes('12 4') ||
+      d.includes('15.5 10') ||
+      d.includes('8.5 10') ||
+      d.includes('6.5 8') ||
+      d.includes('12 7') ||
+      (d.includes('5 16') && (d.includes('3 5') || d.includes('21 5') || d.includes('19 16') || d.includes('12 4')))
+    );
+  }
+
   // Tests if a text strictly represents a Canva Pro badge (not matching titles like "Project" or "Professional")
   function isProBadgeText(str) {
     if (!str || typeof str !== 'string') return false;
     const s = str.trim().toLowerCase();
-    if (!s) return false;
+    if (!s || s.length > 70) return false;
+
     // Disallow false-positive words unless accompanied by "canva pro" or "crown"
     const hasCanvaPro = s.includes('canva pro') || s.includes('crown');
     if (!hasCanvaPro && /\b(project|professional|profile|product|promise|program|progress|property|protocol|provide|process|resume|portfolio|presentation)\b/i.test(s)) {
@@ -116,103 +201,129 @@
     }
     // Strict exact badge texts
     if (s === 'pro' || s === 'canva pro' || s === 'crown' || s === 'paid' || s === 'premium') return true;
-    if (s === '👑 pro' || s === '👑' || s === '⭐ pro' || s === '⭐' || s === 'pro ⭐') return true;
+    if (s === '👑 pro' || s === '👑' || s === '⭐ pro' || s === '⭐' || s === 'pro ⭐' || s === 'pro 👑') return true;
     // Crown variations
     if (/^crown(\s+(icon|badge|symbol))?$/i.test(s)) return true;
     // Strict phrases
     if (/^(canva\s+pro|pro)\s*(template|badge|icon|item|element|design|only|member|feature)?$/i.test(s)) return true;
-    if (/^included (with|in) (canva\s+pro|pro)$/i.test(s)) return true;
-    if (/^(upgrade to|unlock with|try|get|requires?)\s*(canva\s+pro|pro)$/i.test(s)) return true;
+    if (/^included (with|in) (canva\s+pro|pro)(\s+subscription)?$/i.test(s)) return true;
+    if (/^(upgrade to|unlock with|try|get|requires?)\s*(canva\s+pro|pro)(\s+(free|trial))?$/i.test(s)) return true;
     if (/^(paid|premium)\s*(template|content|element|item)?$/i.test(s)) return true;
-    if (s === 'unlock this template' || s === 'contains paid elements') return true;
+    if (s === 'unlock this template' || s === 'contains paid elements' || s === 'contains paid content') return true;
+    if (s.includes('canva pro') && (s.includes('trial') || s.includes('upgrade') || s.includes('unlock') || s.includes('subscribe'))) return true;
+    return false;
+  }
+
+  // Helper to check if a text string has pro/crown markers (e.g. "..., Pro", "Canva Pro", "👑")
+  function hasProMarker(str) {
+    if (!str || typeof str !== 'string') return false;
+    const s = str.trim().toLowerCase();
+    if (!s) return false;
+    if (isProBadgeText(s)) return true;
+    if (/\bcanva\s+pro\b/i.test(s)) return true;
+    if (/\bcrown\b/i.test(s)) return true;
+    if (/(?:,\s*|\s+-\s+|\s*\(\s*)pro(?:\s*\)|$)/i.test(s)) return true;
+    if (/[👑⭐]/.test(s) && /\bpro\b/i.test(s)) return true;
+    if (/\b(paid|premium)\s*(template|content|element|item)?\b/i.test(s)) return true;
     return false;
   }
 
   // Detects if a card element on Canva has Canva Pro / Premium indicators
   function isCardPremium(card, url) {
     if (!card) return false;
+    if (card.dataset && (card.dataset.cbqPremium === '1' || card.dataset.premium === '1')) return true;
+
     const root = getCardContainer(card) || card;
+    if (root.dataset && (root.dataset.cbqPremium === '1' || root.dataset.premium === '1')) return true;
 
     // 1. Check template ID against embedded JSON state in script tags
-    const mId = (url || '').match(/\/templates\/([A-Za-z0-9_]{6,16})/i) || (url || '').match(/\b([EDt][A-Za-z0-9_]{8,15}|[A-Za-z0-9_]{11})\b/);
+    const targetUrl = url || card.dataset?.url || root.querySelector('a[href]')?.getAttribute('href') || '';
+    const mId = targetUrl.match(/\/templates\/([A-Za-z0-9_]{6,16})/i) || targetUrl.match(/\b([EDt][A-Za-z0-9_]{8,15}|[A-Za-z0-9_]{11})\b/);
     const tId = mId ? mId[1] : '';
     if (tId && isProInPageData(tId)) return true;
 
-    // Determine scopes to check: the root card container, and its direct parent if within the same single card
+    // Determine scopes to check: the root card container, card itself, and its direct parent if within the same single card
     const scopes = [root];
+    if (card !== root) scopes.push(card);
     if (root.parentElement && root.parentElement !== document.body && !isMultiCardContainer(root.parentElement)) {
       scopes.push(root.parentElement);
     }
 
     for (const scope of scopes) {
-      // 2. Check all elements inside the scope with identifying attributes
-      const tagged = scope.querySelectorAll('[aria-label], [title], [data-icon], [data-testid], [data-tooltip]');
+      // 2. Check scope's own accessibility and data attributes
+      const scopeAria = scope.getAttribute('aria-label') || '';
+      const scopeTitle = scope.getAttribute('title') || '';
+      const scopeTestId = (scope.getAttribute('data-testid') || '').toLowerCase();
+      const scopeCls = (typeof scope.className === 'string' ? scope.className : '').toLowerCase();
+
+      if (hasProMarker(scopeAria) || hasProMarker(scopeTitle)) return true;
+      if (scope.getAttribute('data-is-pro') === 'true' || scope.getAttribute('data-is-premium') === 'true') return true;
+      if (/pro-?badge|crown-?icon|premium-?badge|pro-?icon|paid-?badge/i.test(scopeTestId)) return true;
+      if (/\bcrown\b|pro-?badge|premium-?badge/i.test(scopeCls)) return true;
+
+      // 3. Check all elements inside the scope with identifying attributes
+      const tagged = scope.querySelectorAll('[aria-label], [title], [data-icon], [data-testid], [data-tooltip], [data-is-pro], [data-is-premium]');
       for (const el of tagged) {
         if (el === scope) continue;
-        // Skip the main preview image alt/title (contains template title)
-        if (el.tagName === 'IMG' && ((el.src && el.src.includes('canva.com')) || el.getBoundingClientRect().width > 80)) {
-          continue;
-        }
-        if (
-          isProBadgeText(el.getAttribute('aria-label')) ||
-          isProBadgeText(el.getAttribute('title')) ||
-          isProBadgeText(el.getAttribute('data-tooltip')) ||
-          isProBadgeText(el.getAttribute('data-icon'))
-        ) {
-          return true;
-        }
+        if (el.getAttribute('data-is-pro') === 'true' || el.getAttribute('data-is-premium') === 'true') return true;
+
         const icon = (el.getAttribute('data-icon') || '').toLowerCase();
         if (icon === 'crown' || icon === 'canva-pro' || icon === 'pro') return true;
 
         const tid = (el.getAttribute('data-testid') || '').toLowerCase();
-        if (/pro-?badge|crown-?icon|premium-?badge|pro-?icon/i.test(tid)) return true;
+        if (/pro-?badge|crown-?icon|premium-?badge|pro-?icon|paid-?badge/i.test(tid)) return true;
+
+        // For IMG elements: check if alt text ends with ", Pro" or contains "Canva Pro"
+        if (el.tagName === 'IMG') {
+          const alt = el.getAttribute('alt') || '';
+          if (hasProMarker(alt)) return true;
+          continue;
+        }
+
+        const aria = el.getAttribute('aria-label') || '';
+        const title = el.getAttribute('title') || '';
+        const tooltip = el.getAttribute('data-tooltip') || '';
+        if (isProBadgeText(aria) || isProBadgeText(title) || isProBadgeText(tooltip)) return true;
       }
 
-      // 3. Check SVGs and their paths/classes
+      // 4. Check SVGs and their paths/classes
       for (const svg of scope.querySelectorAll('svg')) {
-        if (isProBadgeText(svg.getAttribute('aria-label')) || isProBadgeText(svg.getAttribute('title'))) return true;
+        const sAria = svg.getAttribute('aria-label') || '';
+        const sTitle = svg.getAttribute('title') || '';
+        if (hasProMarker(sAria) || hasProMarker(sTitle)) return true;
+
         const sCls = (typeof svg.className === 'string' ? svg.className : (svg.getAttribute('class') || '')).toLowerCase();
         if (/\bcrown\b/i.test(sCls) || /pro-?badge/i.test(sCls) || /premium-?badge/i.test(sCls)) return true;
 
         const titleEl = svg.querySelector('title');
-        if (titleEl && isProBadgeText(titleEl.textContent)) return true;
+        if (titleEl && hasProMarker(titleEl.textContent)) return true;
 
-        if (svg.parentElement && (isProBadgeText(svg.parentElement.getAttribute('aria-label')) || isProBadgeText(svg.parentElement.getAttribute('title')))) {
-          return true;
+        if (svg.parentElement) {
+          const pAria = svg.parentElement.getAttribute('aria-label') || '';
+          const pTitle = svg.parentElement.getAttribute('title') || '';
+          if (hasProMarker(pAria) || hasProMarker(pTitle)) return true;
         }
 
         for (const p of svg.querySelectorAll('path, use, polygon, g')) {
           const pId = (p.getAttribute('id') || '').toLowerCase();
           const pCls = (p.getAttribute('class') || '').toLowerCase();
           const pHref = (p.getAttribute('href') || p.getAttribute('xlink:href') || '').toLowerCase();
-          if (pId.includes('crown') || pCls.includes('crown') || pHref.includes('crown')) return true;
+          if (pId.includes('crown') || pCls.includes('crown') || pHref.includes('crown') || pHref.includes('pro')) return true;
 
           const d = p.getAttribute('d') || '';
-          // Canva Pro crown SVG path coordinates
-          if (
-            d.includes('M3.5 17.5') ||
-            d.includes('14.7 9.87') ||
-            d.includes('8.3 9.76') ||
-            d.includes('M2.5 6.09') ||
-            d.includes('M5 16L3 5') ||
-            d.includes('M5 16') ||
-            (d.includes('5 16') && (d.includes('3 5') || d.includes('21 5') || d.includes('19 16') || d.includes('12 4')))
-          ) {
-            return true;
-          }
+          if (isCrownPath(d)) return true;
         }
       }
 
-      // 4. Check visible text badges (small pill or tag with exact "Pro" or "PRO")
-      for (const el of scope.querySelectorAll('span, div, p, b, strong, em, button')) {
-        const r = el.getBoundingClientRect();
-        if (r.width > 0 && r.width <= 110 && r.height > 0 && r.height <= 50) {
+      // 5. Check visible text badges (small pill or tag with exact "Pro" or "PRO")
+      for (const el of scope.querySelectorAll('span, div, p, b, strong, em, button, label')) {
+        if (el.children.length === 0 || el.children.length === 1) {
           const txt = (el.textContent || '').trim();
-          if (isProBadgeText(txt)) return true;
+          if (txt && isProBadgeText(txt)) return true;
         }
       }
 
-      // 5. Check for Pro CTA buttons inside the card
+      // 6. Check for Pro CTA buttons inside the card
       for (const btn of scope.querySelectorAll('button, [role="button"], a')) {
         const txt = (btn.textContent || '').trim().toLowerCase();
         const aria = (btn.getAttribute('aria-label') || '').trim().toLowerCase();
@@ -244,14 +355,17 @@
   // card: the element to put the checkbox on, url: its template link
   function decorate(card, url) {
     if (card.dataset.cbqDone) return;
+    if (isSidebarOrNav(card)) return;
     card.dataset.cbqDone = '1';
 
     const cardContainer = getCardContainer(card) || card;
+    if (isSidebarOrNav(cardContainer)) return;
     const isPrem = isCardPremium(cardContainer, url);
     card.dataset.cbqPremium = isPrem ? '1' : '0';
     if (cardContainer !== card) cardContainer.dataset.cbqPremium = isPrem ? '1' : '0';
 
     const host = card.tagName === 'A' ? card.parentElement || card : card;
+    if (isSidebarOrNav(host)) return;
     if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
 
     const box = document.createElement('input');
@@ -265,8 +379,9 @@
       box.addEventListener(ev, (e) => e.stopPropagation(), true);
     }
     box.addEventListener('change', () => {
-      const livePrem = box.dataset.premium === '1' || isCardPremium(getCardContainer(box), url);
-      if (box.checked) ticked.set(url, { title: titleOf(cardContainer), isPremium: livePrem });
+      const container = getCardContainer(box) || cardContainer;
+      const livePrem = box.dataset.premium === '1' || isCardPremium(container, url) || isCardPremium(box, url);
+      if (box.checked) ticked.set(url, { title: titleOf(container), isPremium: livePrem });
       else ticked.delete(url);
       render();
     });
@@ -276,26 +391,27 @@
   // Way 1: links to a template.
   function fromLink(a) {
     if (a.dataset.cbqDone) return;
+    if (isSidebarOrNav(a)) return;
     const url = templateUrl(a.href);
     if (!url) return;
     const r = a.getBoundingClientRect(); // only picture cards, not small text links
-    if (!a.querySelector('img, picture, video, canvas') && (r.width < 60 || r.height < 40)) return;
+    if (!a.querySelector('img, picture, video, canvas') && ((r.width > 0 && r.width < 60) || (r.height > 0 && r.height < 40))) return;
     decorate(a, url);
   }
 
   // Way 2: picture cards. On Canva's search page (/s/templates) the cards are
   // not always links, but pictures come from template.canva.com/<template id>/...
   // or media-graph.canva.com, or have template ids in attributes.
-  const ID_IN_TEXT = /\b([EDt][A-Za-z0-9_-]{8,15}|[A-Za-z0-9_-]{11})\b/;
-  const ID_IN_IMAGE = /(?:template(?:-images)?|media-(?:graph|public))\.canva\.com\/([A-Za-z0-9_-]{8,16})\//i;
+  const ID_IN_TEXT = /\b([EDt][A-Za-z0-9_]{8,15}|[A-Za-z0-9]{11})\b/;
+  const ID_IN_IMAGE = /(?:template(?:-images)?|media(?:-[a-z0-9]+)?|marketplace|static)\.canva\.com\/([A-Za-z0-9_-]{8,16})\//i;
 
   function findCardForPicture(img) {
     let el = img;
     let candidate = img.parentElement;
-    for (let i = 0; el && i < 8; i++) {
+    for (let i = 0; el && i < 10; i++) {
       el = el.parentElement;
       if (!el || el === document.body || el === document.documentElement) break;
-      if (isMultiCardContainer(el)) break;
+      if (isMultiCardContainer(el) || isSidebarOrNav(el)) break;
       if (el.matches && el.matches(S.cardSelector)) return el;
       candidate = el;
     }
@@ -304,22 +420,27 @@
 
   function fromPicture(img) {
     if (img.closest('[data-cbq-done], .cbq-panel')) return;
-    const r = img.getBoundingClientRect();
-    if (r.width < 80 || r.height < 50) return;
+    if (isSidebarOrNav(img)) return;
     const imgSrc = img.currentSrc || img.src || img.getAttribute('src') || img.dataset.src || img.srcset || '';
     const m = ID_IN_IMAGE.exec(imgSrc);
     if (m) {
       const card = findCardForPicture(img) || img.parentElement;
+      if (isSidebarOrNav(card)) return;
       return decorate(card, `https://www.canva.com/templates/${m[1]}/`);
     }
+    const r = img.getBoundingClientRect();
+    if ((r.width > 0 && r.width < 80) || (r.height > 0 && r.height < 50)) return;
     // Other pages: the template id may sit in an attribute of the card.
     let el = img.parentElement;
-    for (let i = 0; el && i < 8; i++, el = el.parentElement) {
-      if (isMultiCardContainer(el)) break;
+    for (let i = 0; el && i < 10; i++, el = el.parentElement) {
+      if (isMultiCardContainer(el) || isSidebarOrNav(el)) break;
       for (const attr of el.attributes) {
-        if (attr.name === 'class' || attr.name === 'style') continue;
+        if (/^(class|style|role|data-testid|aria-)/i.test(attr.name)) continue;
         const hit = ID_IN_TEXT.exec(attr.value);
-        if (hit) return decorate(el, `https://www.canva.com/templates/${hit[1]}/`);
+        if (hit) {
+          if (!isSidebarOrNav(el)) decorate(el, `https://www.canva.com/templates/${hit[1]}/`);
+          return;
+        }
       }
     }
   }
@@ -330,8 +451,31 @@
     scanQueued = true;
     setTimeout(() => {
       scanQueued = false;
+      // Remove any checkboxes that were erroneously injected into sidebar or navigation
+      document.querySelectorAll('.cbq-box').forEach((box) => {
+        if (isSidebarOrNav(box)) {
+          if (ticked.has(box.dataset.url)) ticked.delete(box.dataset.url);
+          box.remove();
+        }
+      });
       document.querySelectorAll('a[href]').forEach(fromLink);
       document.querySelectorAll('img').forEach(fromPicture);
+      // Re-scan existing valid boxes to catch Pro badges rendered asynchronously by Canva
+      document.querySelectorAll('.cbq-box').forEach((b) => {
+        if (isSidebarOrNav(b)) {
+          b.remove();
+          return;
+        }
+        if (b.dataset.premium !== '1') {
+          const cardContainer = getCardContainer(b) || b.parentElement;
+          if (isCardPremium(cardContainer, b.dataset.url) || isCardPremium(b, b.dataset.url)) {
+            b.dataset.premium = '1';
+            b.classList.add('cbq-box-pro');
+            b.title = '⭐ Canva Pro template (click to add)';
+            if (cardContainer && cardContainer.dataset) cardContainer.dataset.cbqPremium = '1';
+          }
+        }
+      });
       render();
     }, 300);
   }
@@ -359,8 +503,8 @@
       }
       return path.join('\n  ');
     });
-    const boxes = document.querySelectorAll('.cbq-box');
-    const premCount = [...boxes].filter((b) => b.dataset.premium === '1' || isCardPremium(getCardContainer(b), b.dataset.url)).length;
+    const boxes = [...document.querySelectorAll('.cbq-box')].filter((b) => !isSidebarOrNav(b));
+    const premCount = boxes.filter((b) => b.dataset.premium === '1' || isCardPremium(getCardContainer(b), b.dataset.url)).length;
     return [
       `Extension version: ${chrome.runtime.getManifest().version}`,
       `Page: ${location.href}`,
@@ -401,7 +545,7 @@
     const label = `Add ticked (${ticked.size})`;
     if (add.textContent !== label) add.textContent = label; // avoid waking our own observer
     panel.querySelector('[data-act="this"]').hidden = !templateUrl(location.href);
-    const n = document.querySelectorAll('.cbq-box').length;
+    const n = [...document.querySelectorAll('.cbq-box')].filter((b) => !isSidebarOrNav(b)).length;
     const found = n
       ? `Templates found on this page: ${n}`
       : 'No templates found here. Open a Canva templates page, or reload this page.';
@@ -434,16 +578,16 @@
       document.querySelectorAll('a[href]').forEach(fromLink);
       document.querySelectorAll('img').forEach(fromPicture);
       let count = 0;
-      const allBoxes = document.querySelectorAll('.cbq-box');
+      const allBoxes = [...document.querySelectorAll('.cbq-box')].filter((b) => !isSidebarOrNav(b));
       allBoxes.forEach((b) => {
         const url = b.dataset.url;
         const cardContainer = getCardContainer(b) || b.parentElement;
-        const isPrem = isCardPremium(cardContainer, url);
+        const isPrem = Boolean(b.dataset.premium === '1' || isCardPremium(cardContainer, url) || isCardPremium(b, url));
         if (isPrem) {
           b.checked = true;
           b.dataset.premium = '1';
           b.classList.add('cbq-box-pro');
-          b.title = '⭐ Canva Pro template';
+          b.title = '⭐ Canva Pro template (click to add)';
           ticked.set(url, { title: titleOf(cardContainer), isPremium: true });
           count++;
         } else {
@@ -462,18 +606,20 @@
     } else if (act === 'all') {
       document.querySelectorAll('a[href]').forEach(fromLink);
       document.querySelectorAll('img').forEach(fromPicture);
+      const allBoxes = [...document.querySelectorAll('.cbq-box')].filter((b) => !isSidebarOrNav(b));
       chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }).then((st) => {
         const onlyPrem = Boolean(st && st.onlyPremium);
         let count = 0;
-        document.querySelectorAll('.cbq-box').forEach((b) => {
+        allBoxes.forEach((b) => {
           const url = b.dataset.url;
           const cardContainer = getCardContainer(b) || b.parentElement;
-          const isPrem = isCardPremium(cardContainer, url);
+          const isPrem = Boolean(b.dataset.premium === '1' || isCardPremium(cardContainer, url) || isCardPremium(b, url));
           if (!onlyPrem || isPrem) {
             b.checked = true;
             if (isPrem) {
               b.dataset.premium = '1';
               b.classList.add('cbq-box-pro');
+              b.title = '⭐ Canva Pro template (click to add)';
             }
             ticked.set(url, { title: titleOf(cardContainer), isPremium: isPrem });
             count++;
@@ -485,18 +631,26 @@
         render();
         say(onlyPrem ? `Ticked ${count} premium templates (Premium-only mode).` : `Ticked ${count} templates.`);
       }).catch(() => {
-        document.querySelectorAll('.cbq-box').forEach((b) => {
+        allBoxes.forEach((b) => {
           const url = b.dataset.url;
           const cardContainer = getCardContainer(b) || b.parentElement;
-          const isPrem = isCardPremium(cardContainer, url);
+          const isPrem = Boolean(b.dataset.premium === '1' || isCardPremium(cardContainer, url) || isCardPremium(b, url));
           b.checked = true;
+          if (isPrem) {
+            b.dataset.premium = '1';
+            b.classList.add('cbq-box-pro');
+            b.title = '⭐ Canva Pro template (click to add)';
+          }
           ticked.set(url, { title: titleOf(cardContainer), isPremium: isPrem });
         });
         render();
       });
     } else if (act === 'none') {
       ticked.clear();
-      document.querySelectorAll('.cbq-box').forEach((b) => (b.checked = false));
+      document.querySelectorAll('.cbq-box').forEach((b) => {
+        b.checked = false;
+        if (isSidebarOrNav(b)) b.remove();
+      });
       render();
     } else if (act === 'debug') {
       try {

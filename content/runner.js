@@ -216,10 +216,10 @@
 
     // Canva encodes template license in JSON state as: "DI":"<id>",...,"DL":"canva_pro" or "DL":"paid" or "is_pro":true
     const patterns = [
-      new RegExp(`"${templateId}"[\\s\\S]{0,450}?(?:"DL"|"license"|"pricing_type"|"type")\\s*:\\s*"(canva_pro|paid|canva:paid|canva:pro|pro)"`, 'i'),
-      new RegExp(`(?:"DL"|"license"|"pricing_type"|"type")\\s*:\\s*"(canva_pro|paid|canva:paid|canva:pro|pro)"[\\s\\S]{0,450}?"${templateId}"`, 'i'),
-      new RegExp(`"${templateId}"[\\s\\S]{0,450}?(?:"is_pro"|"isPro"|"isPremium"|"is_premium")\\s*:\\s*true`, 'i'),
-      new RegExp(`(?:"is_pro"|"isPro"|"isPremium"|"is_premium")\\s*:\\s*true[\\s\\S]{0,450}?"${templateId}"`, 'i'),
+      new RegExp(`"${templateId}"[\\s\\S]{0,600}?(?:"DL"|"license"|"pricing_type"|"priceTier"|"pricingTier"|"tier"|"plan"|"billingType"|"accessLevel"|"badge"|"type")\\s*:\\s*"(canva_pro|paid|canva:paid|canva:pro|pro|crown)"`, 'i'),
+      new RegExp(`(?:"DL"|"license"|"pricing_type"|"priceTier"|"pricingTier"|"tier"|"plan"|"billingType"|"accessLevel"|"badge"|"type")\\s*:\\s*"(canva_pro|paid|canva:paid|canva:pro|pro|crown)"[\\s\\S]{0,600}?"${templateId}"`, 'i'),
+      new RegExp(`"${templateId}"[\\s\\S]{0,600}?(?:"is_pro"|"isPro"|"isPremium"|"is_premium"|"isPaid"|"is_paid"|"hasPaidElements"|"is_locked")\\s*:\\s*true`, 'i'),
+      new RegExp(`(?:"is_pro"|"isPro"|"isPremium"|"is_premium"|"isPaid"|"is_paid"|"hasPaidElements"|"is_locked")\\s*:\\s*true[\\s\\S]{0,600}?"${templateId}"`, 'i'),
     ];
     const scripts = document.querySelectorAll('script');
     for (const s of scripts) {
@@ -254,13 +254,15 @@
       if (aria === 'pro' || aria === 'canva pro' || title === 'pro' || title === 'canva pro') return true;
       if (aria.includes('crown') || title.includes('crown') || testId.includes('crown') || dataIcon.includes('crown')) return true;
       if (testId.includes('pro-badge') || testId.includes('premium-badge') || cls.includes('probadge') || cls.includes('crown')) return true;
+      if (el.getAttribute('data-is-pro') === 'true' || el.getAttribute('data-is-premium') === 'true') return true;
+      if (/(?:,\s*|\s+-\s+|\s*\(\s*)pro(?:\s*\)|$)/i.test(aria) || /(?:,\s*|\s+-\s+|\s*\(\s*)pro(?:\s*\)|$)/i.test(title)) return true;
 
       // Small badge pill with visible text "Pro" or "PRO"
       if (el.children.length === 0) {
         const text = (el.textContent || '').trim();
-        if (text === 'Pro' || text === 'PRO') {
+        if (text === 'Pro' || text === 'PRO' || text === '👑' || text === '👑 Pro') {
           const rect = el.getBoundingClientRect();
-          if (rect.width > 0 && rect.width < 120 && rect.height > 0 && rect.height < 60) {
+          if ((rect.width > 0 && rect.width < 140 && rect.height > 0 && rect.height < 70) || (rect.width === 0 && rect.height === 0)) {
             return true;
           }
         }
@@ -273,15 +275,27 @@
         for (const p of paths) {
           const pId = norm(p.getAttribute('id') || '');
           const pCls = norm(p.getAttribute('class') || '');
-          if (pId.includes('crown') || pCls.includes('crown')) return true;
+          const pHref = norm(p.getAttribute('href') || p.getAttribute('xlink:href') || '');
+          if (pId.includes('crown') || pCls.includes('crown') || pHref.includes('crown') || pHref.includes('pro')) return true;
           const d = p.getAttribute('d') || '';
           if (
+            d.includes('M5 16') ||
+            d.includes('M3 17') ||
+            d.includes('3 17h18') ||
             d.includes('M3.5 17.5') ||
             d.includes('14.7 9.87') ||
             d.includes('8.3 9.76') ||
             d.includes('M2.5 6.09') ||
+            d.includes('M4 13.5') ||
+            d.includes('19 16') ||
+            d.includes('18 20') ||
+            d.includes('5 19') ||
+            d.includes('12 4') ||
+            d.includes('15.5 10') ||
+            d.includes('8.5 10') ||
+            d.includes('6.5 8') ||
+            d.includes('12 7') ||
             d.includes('M5 16L3 5') ||
-            d.includes('M5 16') ||
             (d.includes('5 16') && (d.includes('3 5') || d.includes('21 5') || d.includes('19 16') || d.includes('12 4')))
           ) {
             return true;
